@@ -15,7 +15,8 @@
 //===========================================================================
 // 2.1 Initialize the USART
 //===========================================================================
-void init_usart5(){
+void init_usart5()//Emir Lab10
+{
     //GPIOC
     RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
     GPIOC->MODER &= ~0x3000000;// clear pc12
@@ -49,15 +50,12 @@ void init_usart5(){
 
 }
 
-
-
-
 //===========================================================================
 // Main and supporting functions
 //===========================================================================
 //#define STEP21
         #if defined(STEP21)
-        int main(void)
+        int main(void)//Emir Lab10
         {
             init_usart5();
             for(;;) {
@@ -69,11 +67,11 @@ void init_usart5(){
         }
         #endif
 
-
 //#define STEP22
 #if defined(STEP22)
 #include "stdio.h"
-int __io_putchar(int c) {
+int __io_putchar(int c) //Emir Lab10
+{
     while(!(USART5->ISR & USART_ISR_TXE)) { }
     ///
     if (c == '\n'){
@@ -85,7 +83,8 @@ int __io_putchar(int c) {
     return c;
 }
 
-int __io_getchar(void) {
+int __io_getchar(void) //Emir Lab10
+{
      while (!(USART5->ISR & USART_ISR_RXNE)) { }
      char c = USART5->RDR;
      if (c=='\r'){
@@ -95,7 +94,8 @@ int __io_getchar(void) {
      return c;
 }
 
-int main() {
+int main() //Emir Lab10
+{
     init_usart5();
     setbuf(stdin,0);
     setbuf(stdout,0);
@@ -117,7 +117,8 @@ int main() {
 #include "stdio.h"
 #include "fifo.h"
 #include "tty.h"
-int __io_putchar(int c) {
+int __io_putchar(int c) //Emir Lab10
+{
     while(!(USART5->ISR & USART_ISR_TXE)) { }
     ///
     if (c == '\n'){
@@ -129,7 +130,8 @@ int __io_putchar(int c) {
     return c;
 }
 
-int __io_getchar(void) {
+int __io_getchar(void) //Emir Lab10
+{
 //     while (!(USART5->ISR & USART_ISR_RXNE)) { }
 //     char c = USART5->RDR;
 //     if (c=='\r'){
@@ -140,7 +142,8 @@ int __io_getchar(void) {
     return c;
 }
 
-int main() {
+int main() //Emir Lab10
+    {
     init_usart5();
     setbuf(stdin,0);
     setbuf(stdout,0);
@@ -166,7 +169,8 @@ int main() {
 char serfifo[FIFOSIZE];
 int seroffset = 0;
 
-char interrupt_getchar(){
+char interrupt_getchar()//Emir Lab10
+{
     while(!(fifo_newline(&input_fifo))){
         asm volatile ("wfi");
     }
@@ -174,7 +178,9 @@ char interrupt_getchar(){
     return ch;
 
 }
-int __io_putchar(int c) {
+
+int __io_putchar(int c) //Emir Lab10
+{
     while(!(USART5->ISR & USART_ISR_TXE)) { }
     ///
     if (c == '\n'){
@@ -186,7 +192,8 @@ int __io_putchar(int c) {
     return c;
 }
 
-int __io_getchar(void) {
+int __io_getchar(void) //Emir Lab10
+{
 //     while (!(USART5->ISR & USART_ISR_RXNE)) { }
 //     char c = USART5->RDR;
 //     if (c=='\r'){
@@ -196,7 +203,9 @@ int __io_getchar(void) {
     int c =  interrupt_getchar();
     return c;
 }
-void enable_tty_interrupt(){
+
+void enable_tty_interrupt() //Emir Lab10
+{
 
         USART5-> CR1 |= USART_CR1_RXNEIE;
         USART5->CR3 |= USART_CR3_DMAR;
@@ -214,7 +223,8 @@ void enable_tty_interrupt(){
         DMA2_Channel2->CCR |= DMA_CCR_EN;
 }
 
-void USART3_4_5_6_7_8_IRQHandler(void) {
+void USART3_4_5_6_7_8_IRQHandler(void) //Emir Lab10
+{
             while(DMA2_Channel2->CNDTR != sizeof serfifo - seroffset) {
                 if (!fifo_full(&input_fifo))
                     insert_echo_char(serfifo[seroffset]);
@@ -222,27 +232,8 @@ void USART3_4_5_6_7_8_IRQHandler(void) {
             }
         }
 
-//SPI fxns
-void init_spi1_slow()
+int main() //Emir lab10
 {
-    // Set the baud rate divisor to the maximum value to make the SPI baud rate as low as possible.
-        //accomplished in the same line as setting to master mode.
-    //Set it to Master Mode.
-    SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_BR;;
-    //Set the word size to 8-bit.
-    SPI1->CR2 &=  ~SPI_CR2_DS_3 | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
-    SPI1->CR2 |=  SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
-    //Configure "Software Slave Management" and "Internal Slave Select".
-
-    //Set the "FIFO reception threshold" bit in CR2 so that the SPI channel immediately releases a received 8-bit value.
-    SPI1->CR2 |= SPI_CR2_FRXTH;
-    //Enable the SPI channel.
-    SPI1->CR1 |= SPI_CR1_SPE;
-    return;
-}
-
-int main() {
-    /*
     init_usart5();
     enable_tty_interrupt();
     setbuf(stdin,0);
@@ -257,7 +248,36 @@ int main() {
         char c = getchar();
         putchar(c);
     }
-    */
+}
+#endif
+
+#define STEP5
+#if defined(STEP5)
+#include "stdio.h"
+#include "fifo.h"
+#include "tty.h"
+
+//SPI fxns
+void init_spi1_slow() //ZP SPI SD card reader
+{
+    // Set the baud rate divisor to the maximum value to make the SPI baud rate as low as possible.
+        //accomplished in the same line as setting to master mode.
+    //Set it to Master Mode.
+    SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_BR;;
+    //Set the word size to 8-bit.
+    SPI1->CR2 &=  ~SPI_CR2_DS_3 | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
+    SPI1->CR2 |=  SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
+    //Configure "Software Slave Management" and "Internal Slave Select".
+    SPI1->CR1 |= SPI_CR1_SSM | SPI_CR1_SSI ; //!!! what the heck is this
+
+    //Set the "FIFO reception threshold" bit in CR2 so that the SPI channel immediately releases a received 8-bit value.
+    SPI1->CR2 |= SPI_CR2_FRXTH;
+    //Enable the SPI channel.
+    SPI1->CR1 |= SPI_CR1_SPE;
+    return;
+}
+
+int main() {
     init_usart5();
     enable_tty_interrupt();
     setbuf(stdin,0);
@@ -265,8 +285,5 @@ int main() {
     setbuf(stderr,0);
     command_shell();
 }
+
 #endif
-
-
-
-
