@@ -28,13 +28,13 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: labx.elf
+all: Lab11.elf
 
 # Tool invocations
-labx.elf: $(OBJS) $(USER_OBJS) /home/shay/a/petrop/workspace/labx/LinkerScript.ld
+Lab11.elf: $(OBJS) $(USER_OBJS) /home/shay/a/petrop/workspace/Lab11/LinkerScript.ld
 	@echo 'Building target: $@'
 	@echo 'Invoking: MCU GCC Linker'
-	arm-none-eabi-gcc -mcpu=cortex-m0 -mthumb -mfloat-abi=soft -T"/home/shay/a/petrop/workspace/labx/LinkerScript.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "labx.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
+	arm-none-eabi-gcc -mcpu=cortex-m0 -mthumb -mfloat-abi=soft -T"/home/shay/a/petrop/workspace/Lab11/LinkerScript.ld" -Wl,-Map=output.map -Wl,--gc-sections -o "Lab11.elf" @"objects.list" $(USER_OBJS) $(LIBS) -lm
 	@echo 'Finished building target: $@'
 	@echo ' '
 	$(MAKE) --no-print-directory post-build
@@ -46,8 +46,8 @@ clean:
 
 post-build:
 	-@echo 'Generating binary and Printing size information:'
-	arm-none-eabi-objcopy -O binary "labx.elf" "labx.bin"
-	arm-none-eabi-size "labx.elf"
+	arm-none-eabi-objcopy -O binary "Lab11.elf" "Lab11.bin"
+	arm-none-eabi-size "Lab11.elf"
 	-@echo ' '
 
 .PHONY: all clean dependents
