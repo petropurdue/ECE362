@@ -1,191 +1,368 @@
+/**
+  ******************************************************************************
+  * @file    main.c
+  * @author  Ac6
+  * @version V1.0
+  * @date    01-December-2013
+  * @brief   Default main function.
+  ******************************************************************************
+*/
+
+
 #include "stm32f0xx.h"
-#include <math.h>
-#include <stdint.h>
-#define SAMPLES 30
-uint16_t array[SAMPLES];
+#include "commands.h"
 
-void setup_tim7(int fre)
+//===========================================================================
+// 2.1 Initialize the USART
+//===========================================================================
+void init_usart5()//Emir Lab10
 {
-    //produce the sinusoid
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    for(int x=0; x < SAMPLES; x += 1)
-        array[x] = 2048 + 1952 * sin(2 * M_PI * x / SAMPLES);
+    //GPIOC
+    RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+    GPIOC->MODER &= ~0x3000000;// clear pc12
+    GPIOC->MODER |= 0x2000000; //alt funciton for PC12
+    GPIOC->AFR[1] &= ~0xf0000; // clear AFR[2]
+    GPIOC->AFR[1] |= 0x20000; //set AFR[2] for PC12 for AF2
 
-    //ENABLE TIMER 7
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    //enable the DAC with the Timer 7 TRGO
-    //enable timer 7 with the TIMx_Cr2
-    RCC->APB1ENR |= (RCC_APB1ENR_TIM7EN); //the place with allll the timers uwu
-    TIM7->CR2 &= ~0b1110000;
-    TIM7->CR2 |=  0b0100000;
+    //GPIOD
+    RCC->AHBENR |= RCC_AHBENR_GPIODEN; //enable GPIOD
+    GPIOD -> MODER &= ~0x30; //clear the moder for PD2
+    GPIOD -> MODER |= 0x20; //set PD2 to alt function
+    GPIOD->AFR[0] &= ~0xf00;//clear alt function for pd2
+    GPIOD-> AFR[0] |= 0x200;//set alt function 2 for pd2
 
-
-    //trigger a dma request 1khz on TIM2_CH2
-    //x = 1/(z*SAMP)
-    TIM7->DIER |= 1<<8;
-    TIM7->PSC = 0;
-    int x = 48000000 / (fre * SAMPLES);
-    TIM7->ARR = x-1;
-    //https://numero.wiki/654657
-    //48m/(psc+1)/arr+1 = fre*samples;
-
-
-    DAC->CR |= 0x1000;
-
-    //Make sure you enable the timer.
-    TIM7->CR1 |= 0b1;
-
-    //Make sure you configure the TRGO event to happen on update.
-    //ONLY USE CH4 // look at Table 31, on page 203 of the Family Reference Manual
-    TIM7->DIER |= 0x100;//set the UDE bit of the DIER register of the timer to trigger a DMA transfer when the timer update event occurs.
-
-    //WHY ARE WE DOING THIS !!!
- //   TIM7->DIER |= 0b1;
+    //USART
+    RCC -> APB1ENR |= RCC_APB1ENR_USART5EN;
+    USART5 -> CR1 &= ~USART_CR1_UE; //turn off the USART
+    USART5 -> CR1 &= ~USART_CR1_M; //clear the M0 bit
+    USART5 -> CR1 &= ~0x10000000; //clear the M1 bit
+    USART5 -> CR2 &= ~(USART_CR2_STOP_0|USART_CR2_STOP_1); //One stop bit
+    USART5 -> CR1 &= ~USART_CR1_PCE; //no parity
+    USART5 -> CR1 &= ~USART_CR1_OVER8; //oversampling 16x
+    USART5->BRR |= 0x1A1;//baud rate to 115.kBaud
+    USART5->CR1 |= USART_CR1_RE;
+    USART5->CR1 |= USART_CR1_TE;
+    USART5 -> CR1 |= USART_CR1_UE;
+    while(!(USART5->ISR & USART_ISR_TEACK)&&(USART5->ISR &USART_ISR_REACK));
 
 
-    //ENABLE DMA
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    //enable DMA transfer on DAC ch1, set TIM7 as trigger by writing 010 as TSEL1 and TSEL2
-        DAC->CR |= DAC_CR_TSEL1_1 | DAC_CR_TEN2 | DAC_CR_EN2 | DAC_CR_TSEL2_1;
-        DMA1_Channel4->CCR &= ~DMA_CCR_EN;
-    //enable RCC DMA clock
-    RCC->AHBENR &= ~RCC_AHBENR_DMA1EN;
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-
-    //memory source is the array DataArr
-    DMA1_Channel4->CMAR = (uint32_t)array; /* (3) */ //found in table 32
-
-    //peripheral destination of data transfer is DAC DHR12R1
-    DMA1_Channel4->CPAR = (uint32_t) (&(DAC->DHR12R1));
-
-    //count of data elements to transfer is the number of elements in the array ArrSize
-    DMA1_Channel4->CNDTR = SAMPLES;
-
-    //transfer direction is mem -> per
-    DMA1_Channel4->CCR &= ~DMA_CCR_DIR;
-    DMA1_Channel4->CCR |= DMA_CCR_DIR;
-
-    //set memory sizes
-    DMA1_Channel4->CCR &= ~DMA_CCR_MSIZE_1 ;
-    DMA1_Channel4->CCR &= ~DMA_CCR_PSIZE_1;
-    DMA1_Channel4->CCR |= DMA_CCR_MSIZE_0 | DMA_CCR_PSIZE_0;
-
-    //mem address should be incremented after each transfer
-    DMA1_Channel4->CCR &= ~DMA_CCR_MINC;
-    DMA1_Channel4->CCR |= DMA_CCR_MINC;
-
-    //Disable PINC
-    DMA1_Channel4->CCR &= ~DMA_CCR_PINC;
-
-    //array will be transferred repeatedly, so channel should be set for circular ops
-    DMA1_Channel4->CCR &= ~DMA_CCR_CIRC;
-    DMA1_Channel4->CCR |= DMA_CCR_CIRC;
 
 
-    //enable DMA channel uwu
-    DMA1_Channel4->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel4->CCR |= DMA_CCR_EN;
+}
 
+//===========================================================================
+// Main and supporting functions
+//===========================================================================
+//#define STEP21
+        #if defined(STEP21)
+        int main(void)//Emir Lab10
+        {
+            init_usart5();
+            for(;;) {
+                while (!(USART5->ISR & USART_ISR_RXNE)) { }
+                char c = USART5->RDR;
+                while(!(USART5->ISR & USART_ISR_TXE)) { }
+                USART5->TDR = c;
+            }
+        }
+        #endif
 
-    //SETUP DAC
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    //enable RCC clock ASAP
-    RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+//#define STEP22
+#if defined(STEP22)
+#include "stdio.h"
+int __io_putchar(int c) //Emir Lab10
+{
+    while(!(USART5->ISR & USART_ISR_TXE)) { }
+    ///
+    if (c == '\n'){
+    USART5->TDR = '\r';
+    while(!(USART5->ISR & USART_ISR_TXE)){}
+    }
+    ///
+    USART5->TDR = c;
+    return c;
+}
 
-    //set TSEL1 field so that DAC is triggered by the timer I selected
-    DAC->CR |= 0b010000;
+int __io_getchar(void) //Emir Lab10
+{
+     while (!(USART5->ISR & USART_ISR_RXNE)) { }
+     char c = USART5->RDR;
+     if (c=='\r'){
+         c= '\n';
+     }
+     __io_putchar(c);
+     return c;
+}
 
-    //enable trigger for ch1
-    DAC->CR |=DAC_CR_TEN1;
+int main() //Emir Lab10
+{
+    init_usart5();
+    setbuf(stdin,0);
+    setbuf(stdout,0);
+    setbuf(stderr,0);
+    printf("Enter your name: ");
+    char name[80];
+    fgets(name, 80, stdin);
+    printf("Your name is %s", name);
+    printf("Type any characters.\n");
+    for(;;) {
+        char c = getchar();
+        putchar(c);
+    }
+}
+#endif
 
-    //enable ch1
-    DAC->CR |=DAC_CR_EN1;
+//#define STEP23
+#if defined(STEP23)
+#include "stdio.h"
+#include "fifo.h"
+#include "tty.h"
+int __io_putchar(int c) //Emir Lab10
+{
+    while(!(USART5->ISR & USART_ISR_TXE)) { }
+    ///
+    if (c == '\n'){
+    USART5->TDR = '\r';
+    while(!(USART5->ISR & USART_ISR_TXE)){}
+    }
+    ///
+    USART5->TDR = c;
+    return c;
+}
 
-    //SET DMAEN1 since we triggering DMA with DAC
-    //uwu that's what we did above >w<
+int __io_getchar(void) //Emir Lab10
+{
+//     while (!(USART5->ISR & USART_ISR_RXNE)) { }
+//     char c = USART5->RDR;
+//     if (c=='\r'){
+//         c= '\n';
+//     }
+//     __io_putchar(c);
+    int c = line_buffer_getchar();
+    return c;
+}
 
-    //Enable PA4 for output
-    GPIOA->MODER &= ~0x0300;
-    GPIOA->MODER |=  0x0100;
+int main() //Emir Lab10
+    {
+    init_usart5();
+    setbuf(stdin,0);
+    setbuf(stdout,0);
+    setbuf(stderr,0);
+    printf("Enter your name: ");
+    char name[80];
+    fgets(name, 80, stdin);
+    printf("Your name is %s", name);
+    printf("Type any characters.\n");
+    for(;;) {
+        char c = getchar();
+        putchar(c);
+    }
+}
+#endif
+
+//#define STEP24
+#if defined(STEP24)
+#include "stdio.h"
+#include "fifo.h"
+#include "tty.h"
+#define FIFOSIZE 16
+char serfifo[FIFOSIZE];
+int seroffset = 0;
+
+char interrupt_getchar()//Emir Lab10
+{
+    while(!(fifo_newline(&input_fifo))){
+        asm volatile ("wfi");
+    }
+    char ch = fifo_remove(&input_fifo);
+    return ch;
+
+}
+
+int __io_putchar(int c) //Emir Lab10
+{
+    while(!(USART5->ISR & USART_ISR_TXE)) { }
+    ///
+    if (c == '\n'){
+    USART5->TDR = '\r';
+    while(!(USART5->ISR & USART_ISR_TXE)){}
+    }
+    ///
+    USART5->TDR = c;
+    return c;
+}
+
+int __io_getchar(void) //Emir Lab10
+{
+//     while (!(USART5->ISR & USART_ISR_RXNE)) { }
+//     char c = USART5->RDR;
+//     if (c=='\r'){
+//         c= '\n';
+//     }
+//     __io_putchar(c);
+    int c =  interrupt_getchar();
+    return c;
+}
+
+void enable_tty_interrupt() //Emir Lab10
+{
+
+        USART5-> CR1 |= USART_CR1_RXNEIE;
+        USART5->CR3 |= USART_CR3_DMAR;
+        NVIC->ISER[0] |= 1<<USART3_8_IRQn;
+
+        RCC->AHBENR |= RCC_AHBENR_DMA2EN;
+        DMA2->RMPCR |= DMA_RMPCR2_CH2_USART5_RX;
+        DMA2_Channel2->CCR &= ~DMA_CCR_EN;
+        DMA2_Channel2->CMAR = &serfifo;
+        DMA2_Channel2->CPAR = &USART5->RDR;
+        DMA2_Channel2->CNDTR = FIFOSIZE;
+        DMA2_Channel2->CCR |= DMA_CCR_MINC;
+        DMA2_Channel2->CCR |= DMA_CCR_CIRC;
+        DMA2_Channel2->CCR |= DMA_CCR_PL;
+        DMA2_Channel2->CCR |= DMA_CCR_EN;
+}
+
+void USART3_4_5_6_7_8_IRQHandler(void) //Emir Lab10
+{
+            while(DMA2_Channel2->CNDTR != sizeof serfifo - seroffset) {
+                if (!fifo_full(&input_fifo))
+                    insert_echo_char(serfifo[seroffset]);
+                seroffset = (seroffset + 1) % sizeof serfifo;
+            }
+        }
+
+int main() //Emir lab10
+{
+    init_usart5();
+    enable_tty_interrupt();
+    setbuf(stdin,0);
+    setbuf(stdout,0);
+    setbuf(stderr,0);
+    printf("Enter your name: ");
+    char name[80];
+    fgets(name, 80, stdin);
+    printf("Your name is %s", name);
+    printf("Type any characters.\n");
+    for(;;) {
+        char c = getchar();
+        putchar(c);
+    }
+}
+#endif
+
+#define STEP5
+#if defined(STEP5)
+#include "stdio.h"
+#include "fifo.h"
+#include "tty.h"
+
+//SPI fxns
+void init_spi1_slow() //ZP SPI SD card reader
+{
+    // Set the baud rate divisor to the maximum value to make the SPI baud rate as low as possible.
+        //accomplished in the same line as setting to master mode.
+    //Set it to Master Mode.
+    SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_BR;;
+    //Set the word size to 8-bit.
+    SPI1->CR2 &=  ~SPI_CR2_DS_3 | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
+    SPI1->CR2 |=  SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
+    //Configure "Software Slave Management" and "Internal Slave Select".
+    SPI1->CR1 |= SPI_CR1_SSM | SPI_CR1_SSI ; //!!! what the heck is this
+
+    //Set the "FIFO reception threshold" bit in CR2 so that the SPI channel immediately releases a received 8-bit value.
+    SPI1->CR2 |= SPI_CR2_FRXTH;
+    //Enable the SPI channel.
+    SPI1->CR1 |= SPI_CR1_SPE;
     return;
 }
 
+void enable_sdcard() //ZP SPI SD card reader
+{   //This function should set PB2 low to enable the SD card.
 
+    //set pin as output mode
+    GPIOB->MODER &=~0b11000000;
+    GPIOB->MODER |= 0b01000000;
 
-int main(void)
-{
-    // Uncomment any one of the following calls ...
-    //setup_tim7(1000);
-    setup_tim7(1234.5);
-    //setup_tim7(10000);
-    //setup_tim7(100000);
+    //set to output push/pull
+    GPIOB->OTYPER &=~0b1000;
 
+    //set output pull up pull down
+    GPIOB->PUPDR &=~0b11000000;
+    GPIOB->PUPDR |= 0b10000000;
+
+    return;
 }
 
+void disable_sdcard() //ZP SPI SD card reader
+{   //This function should set PB2 high to disablethe SD card.
 
+    //set pin as output mode
+    GPIOB->MODER &=~0b11000000;
+    GPIOB->MODER |= 0b01000000;
 
+    //set to output push/pull
+    GPIOB->OTYPER &=~0b1000;
 
+    //set output to pull up
+    GPIOB->PUPDR &=~0b11000000;
+    GPIOB->PUPDR |= 0b01000000;
 
+    return;
+}
 
+void init_sdcard_io() //ZP SPI SD card reader
+{
+    init_spi1_slow();
+    //Configure PB2 as an output.
+    GPIOB->MODER &=~0b11000000;
+    GPIOB->MODER |= 0b01000000;
 
+    disable_sdcard();
 
+    return;
+}
 
+void  sdcard_io_high_speed() //ZP SPI SD card reader
+{
+    /*Disable the SPI1 channel.
+     * The correct disable procedure is (except when receive only mode is used):
+        1. Wait until FTLVL[1:0] = 00 (no more data to transmit).
+        2. Wait until BSY=0 (the last data frame is processed).
+        3. Disable the SPI (SPE=0).
+        4. Read data until FRLVL[1:0] = 00 (read all the received data)
+     */
+    //but I'm lazy lol
+    SPI1->CR1 &= ~0b1000000;
 
+    //Set the SPI1 Baud Rate register so that the clock rate is 12 MHz.
+    RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
+    SPI1->CR1 |= SPI_CR1_MSTR | SPI_CR1_BR | SPI_CR1_BIDIMODE | SPI_CR1_BIDIOE; //set BR to 001, which makes it 4
+    SPI1->CR2 = SPI_CR2_SSOE | SPI_CR2_NSSP | SPI_CR2_DS_3 | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS; //16 bit word size cause I'm edgy
+    SPI1->CR1 |= SPI_CR1_SPE;
 
+    //Re-enable the SPI1 channel.
 
+    return;
+}
 
+void init_lcd_spi()
+{
+    //Configure PB8, PB11, and PB14 as GPIO outputs.
+    GPIOB->MODER &=~ 0b1100001100001100000000000000; //=0x4104000
+    GPIOB->MODER |=  0b0100000100000100000000000000;
+    init_spi1_slow();
+    dcard_io_high_speed();
+    return;
+}
 
+int main() {
+    init_usart5();
+    enable_tty_interrupt();
+    setbuf(stdin,0);
+    setbuf(stdout,0);
+    setbuf(stderr,0);
+    command_shell();
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const char font[] = {
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    0x00, // 32: space
-    0x86, // 33: exclamation
-    0x22, // 34: double quote
-    0x76, // 35: octothorpe
-    0x00, // dollar
-    0x00, // percent
-    0x00, // ampersand
-    0x20, // 39: single quote
-    0x39, // 40: open paren
-    0x0f, // 41: close paren
-    0x49, // 42: asterisk
-    0x00, // plus
-    0x10, // 44: comma
-    0x40, // 45: minus
-    0x80, // 46: period
-    0x00, // slash
-    // digits
-    0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x67,
-    // seven unknown
-    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    // Uppercase
-    0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71, 0x6f, 0x76, 0x30, 0x1e, 0x00, 0x38, 0x00,
-    0x37, 0x3f, 0x73, 0x7b, 0x31, 0x6d, 0x78, 0x3e, 0x00, 0x00, 0x00, 0x6e, 0x00,
-    0x39, // 91: open square bracket
-    0x00, // backslash
-    0x0f, // 93: close square bracket
-    0x00, // circumflex
-    0x08, // 95: underscore
-    0x20, // 96: backquote
-    // Lowercase
-    0x5f, 0x7c, 0x58, 0x5e, 0x79, 0x71, 0x6f, 0x74, 0x10, 0x0e, 0x00, 0x30, 0x00,
-    0x54, 0x5c, 0x73, 0x7b, 0x50, 0x6d, 0x78, 0x1c, 0x00, 0x00, 0x00, 0x6e, 0x00
-};
+#endif
