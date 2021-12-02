@@ -161,7 +161,7 @@ int main() //Emir Lab10
 #endif
 
 //#define STEP24
-#if defined(STEP24)
+
 #include "stdio.h"
 #include "fifo.h"
 #include "tty.h"
@@ -231,7 +231,7 @@ void USART3_4_5_6_7_8_IRQHandler(void) //Emir Lab10
                 seroffset = (seroffset + 1) % sizeof serfifo;
             }
         }
-
+#if defined(STEP24)
 int main() //Emir lab10
 {
     init_usart5();
@@ -257,19 +257,19 @@ int main() //Emir lab10
 #include "fifo.h"
 #include "tty.h"
 
+
 //SPI fxns
 void init_spi1_slow() //ZP SPI SD card reader
 {
     // Set the baud rate divisor to the maximum value to make the SPI baud rate as low as possible.
         //accomplished in the same line as setting to master mode.
     //Set it to Master Mode.
-    SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_BR;;
+    SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_BR | SPI_CR1_BR_1 | SPI_CR1_BR_2;
     //Set the word size to 8-bit.
     SPI1->CR2 &=  ~SPI_CR2_DS_3 | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
     SPI1->CR2 |=  SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS_0;
     //Configure "Software Slave Management" and "Internal Slave Select".
     SPI1->CR1 |= SPI_CR1_SSM | SPI_CR1_SSI ; //!!! what the heck is this
-
     //Set the "FIFO reception threshold" bit in CR2 so that the SPI channel immediately releases a received 8-bit value.
     SPI1->CR2 |= SPI_CR2_FRXTH;
     //Enable the SPI channel.
@@ -281,8 +281,8 @@ void enable_sdcard() //ZP SPI SD card reader
 {   //This function should set PB2 low to enable the SD card.
 
     //set pin as output mode
-    GPIOB->MODER &=~0b11000000;
-    GPIOB->MODER |= 0b01000000;
+    GPIOB->MODER &= ~GPIO_MODER_MODER2;
+    GPIOB->MODER |= GPIO_MODER_MODER2_0;
 
     //set to output push/pull
     GPIOB->OTYPER &=~0b1000;
@@ -295,7 +295,7 @@ void enable_sdcard() //ZP SPI SD card reader
 }
 
 void disable_sdcard() //ZP SPI SD card reader
-{   //This function should set PB2 high to disablethe SD card.
+{   //This function should set PB2 high to disable the SD card.
 
     //set pin as output mode
     GPIOB->MODER &=~0b11000000;
@@ -332,17 +332,17 @@ void  sdcard_io_high_speed() //ZP SPI SD card reader
         3. Disable the SPI (SPE=0).
         4. Read data until FRLVL[1:0] = 00 (read all the received data)
      */
-    //but I'm lazy lol
+    //but I'm lazy uwu
     SPI1->CR1 &= ~0b1000000;
 
     //Set the SPI1 Baud Rate register so that the clock rate is 12 MHz.
     RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
     SPI1->CR1 |= SPI_CR1_MSTR | SPI_CR1_BR | SPI_CR1_BIDIMODE | SPI_CR1_BIDIOE; //set BR to 001, which makes it 4
-    SPI1->CR2 = SPI_CR2_SSOE | SPI_CR2_NSSP | SPI_CR2_DS_3 | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS; //16 bit word size cause I'm edgy
+    SPI1->CR2 = SPI_CR2_SSOE | SPI_CR2_NSSP | SPI_CR2_DS_2 | SPI_CR2_DS_1 | SPI_CR2_DS; //8 bit word size cause I'm edgy
     SPI1->CR1 |= SPI_CR1_SPE;
 
     //Re-enable the SPI1 channel.
-
+    SPI1->CR1 |= 0b1000000;
     return;
 }
 
@@ -352,7 +352,7 @@ void init_lcd_spi()
     GPIOB->MODER &=~ 0b1100001100001100000000000000; //=0x4104000
     GPIOB->MODER |=  0b0100000100000100000000000000;
     init_spi1_slow();
-    dcard_io_high_speed();
+    sdcard_io_high_speed();
     return;
 }
 
