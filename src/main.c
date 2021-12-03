@@ -1,20 +1,13 @@
-/**
-  ******************************************************************************
-  * @file    main.c
-  * @author  Ac6
-  * @version V1.0
-  * @date    01-December-2013
-  * @brief   Default main function.
-  ******************************************************************************
-*/
-
-
 #include "stm32f0xx.h"
 #include "commands.h"
+#include "stdio.h"
+#include "fifo.h"
+#include "tty.h"
+#include "lcd.h"
+#define FIFOSIZE 16
+char serfifo[FIFOSIZE];
+int seroffset = 0;
 
-//===========================================================================
-// 2.1 Initialize the USART
-//===========================================================================
 void init_usart5()//Emir Lab10
 {
     //GPIOC
@@ -49,120 +42,6 @@ void init_usart5()//Emir Lab10
 
 
 }
-
-//===========================================================================
-// Main and supporting functions
-//===========================================================================
-//#define STEP21
-        #if defined(STEP21)
-        int main(void)//Emir Lab10
-        {
-            init_usart5();
-            for(;;) {
-                while (!(USART5->ISR & USART_ISR_RXNE)) { }
-                char c = USART5->RDR;
-                while(!(USART5->ISR & USART_ISR_TXE)) { }
-                USART5->TDR = c;
-            }
-        }
-        #endif
-
-//#define STEP22
-#if defined(STEP22)
-#include "stdio.h"
-int __io_putchar(int c) //Emir Lab10
-{
-    while(!(USART5->ISR & USART_ISR_TXE)) { }
-    ///
-    if (c == '\n'){
-    USART5->TDR = '\r';
-    while(!(USART5->ISR & USART_ISR_TXE)){}
-    }
-    ///
-    USART5->TDR = c;
-    return c;
-}
-
-int __io_getchar(void) //Emir Lab10
-{
-     while (!(USART5->ISR & USART_ISR_RXNE)) { }
-     char c = USART5->RDR;
-     if (c=='\r'){
-         c= '\n';
-     }
-     __io_putchar(c);
-     return c;
-}
-
-int main() //Emir Lab10
-{
-    init_usart5();
-    setbuf(stdin,0);
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-    printf("Enter your name: ");
-    char name[80];
-    fgets(name, 80, stdin);
-    printf("Your name is %s", name);
-    printf("Type any characters.\n");
-    for(;;) {
-        char c = getchar();
-        putchar(c);
-    }
-}
-#endif
-
-//#define STEP23
-#if defined(STEP23)
-#include "stdio.h"
-#include "fifo.h"
-#include "tty.h"
-int __io_putchar(int c) //Emir Lab10
-{
-    while(!(USART5->ISR & USART_ISR_TXE)) { }
-    ///
-    if (c == '\n'){
-    USART5->TDR = '\r';
-    while(!(USART5->ISR & USART_ISR_TXE)){}
-    }
-    ///
-    USART5->TDR = c;
-    return c;
-}
-
-int __io_getchar(void) //Emir Lab10
-{
-
-    int c = line_buffer_getchar();
-    return c;
-}
-
-int main() //Emir Lab10
-    {
-    init_usart5();
-    setbuf(stdin,0);
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-    printf("Enter your name: ");
-    char name[80];
-    fgets(name, 80, stdin);
-    printf("Your name is %s", name);
-    printf("Type any characters.\n");
-    for(;;) {
-        char c = getchar();
-        putchar(c);
-    }
-}
-#endif
-
-//#define STEP24
-
-#include "stdio.h"
-#include "fifo.h"
-#include "tty.h"
-#define FIFOSIZE 16
-char serfifo[FIFOSIZE];
-int seroffset = 0;
 
 char interrupt_getchar()//Emir Lab10
 {
@@ -220,33 +99,6 @@ void USART3_4_5_6_7_8_IRQHandler(void) //Emir Lab10
                 seroffset = (seroffset + 1) % sizeof serfifo;
             }
         }
-#if defined(STEP24)
-int main() //Emir lab10
-{
-    init_usart5();
-    enable_tty_interrupt();
-    setbuf(stdin,0);
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-    printf("Enter your name: ");
-    char name[80];
-    fgets(name, 80, stdin);
-    printf("Your name is %s", name);
-    printf("Type any characters.\n");
-    for(;;) {
-        char c = getchar();
-        putchar(c);
-    }
-
-}
-#endif
-
-#define STEP5
-#if defined(STEP5)
-#include "stdio.h"
-#include "fifo.h"
-#include "tty.h"
-#include "commands.h"
 
 int main() {
     init_usart5();
@@ -254,7 +106,18 @@ int main() {
     setbuf(stdin,0);
     setbuf(stdout,0);
     setbuf(stderr,0);
+
+    //initialization fxns
+    print_pizza();
+    quickLCDinit();
+    quickLCDinit();
+    printcommand("my custom function is working");
+    //drawstring(0, 0, 0xFFFF, 0x0000, "All I can think of is fuck off but I don't think that's appropriate :(", 16, 0);
+    drawstring(0, 0, 0xFFFF, 0x0000, "wwwwwwwwwwwwwwwwwwwwwwwwwwwwaw", 16, 0);
+
+    //any additional comands can be manually inputted here
     command_shell();
+
 }
 
 //SPI fxns
@@ -315,7 +178,7 @@ void  sdcard_io_high_speed() //ZP SPI SD card reader
     SPI1->CR1 |= SPI_CR1_SPE;
 }
 
-void init_lcd_spi()
+void init_lcd_spi() //ZP SPI LCD screen
 {
     //Configure PB8, PB11, and PB14 as GPIO outputs.
     GPIOB->MODER |= GPIO_MODER_MODER8_0 | GPIO_MODER_MODER14_0 | GPIO_MODER_MODER11_0;
@@ -325,4 +188,3 @@ void init_lcd_spi()
     sdcard_io_high_speed();
 }
 
-#endif

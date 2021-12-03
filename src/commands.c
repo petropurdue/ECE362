@@ -96,8 +96,6 @@ uint32_t get_fattime(void)
     return *(uint32_t *)&fattime;
 }
 
-
-
 void print_error(FRESULT fr, const char *msg)
 {
     const char *errs[] = {
@@ -436,6 +434,11 @@ void drawline(int argc, char *argv[])
     LCD_DrawLine(x1,y1,x2,y2,c);
 }
 
+void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint,int fontsize, int mode)
+{//max string length is 30 characters. It does not matter if it is a long character (ex lll vs www).
+    LCD_DrawString(xcord, ycord, FGcol, BGcol, stringtoprint, fontsize, mode);
+}
+
 void drawrect(int argc, char *argv[])
 {
     if (argc != 6) {
@@ -530,12 +533,49 @@ void parse_command(char *c)
     }
 }
 
-
 static void insert_echo_string(const char *s)
 {
     // This puts a string into the *input* stream, so it can be edited.
     while(*s)
         insert_echo_char(*s++);
+}
+
+void print_pizza(void)
+{
+    printf("\n========================\n");
+    printf("new execution!\n");
+    printf("========================\n");
+}
+
+void quickLCDinit(void) //ZP lcd stuff
+{
+    //This function will initialize the LCD screen. Make sure it is called twice.
+    char line[100];
+    line[0] = 'l';
+    line[1] = 'c';
+    line[2] = 'd';
+    line[3] = '_';
+    line[4] = 'i';
+    line[5] = 'n';
+    line[6] = 'i';
+    line[7] = 't';
+    line[8] = '\0';
+    line[9] = '\0';
+    parse_command(line);
+
+
+}
+
+void printcommand(char * arr) //zp terminal execution
+{
+    //this will print any command you send over to the terminal. Call with format >printcommand("command I want to be printed");
+    //This function is ONLY useful for testing; it will not be integrated into the final product.
+    int i = 0;
+    while(arr[i])
+    {
+        printf("%c",arr[i]);
+        i++;
+    }
 }
 
 void command_shell(void)

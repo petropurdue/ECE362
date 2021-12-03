@@ -6,6 +6,13 @@ struct commands_t {
     void      (*fn)(int argc, char *argv[]);
 };
 
+//built in
 void command_shell(void);
+
+//mine
+void print_pizza(void);
+void printcommand(char * arr);
+void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint,int fontsize, int mode);
+void quickLCDinit(void);
 
 #endif /* __COMMANDS_H_ */
