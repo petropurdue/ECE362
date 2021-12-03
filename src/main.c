@@ -237,6 +237,7 @@ int main() //Emir lab10
         char c = getchar();
         putchar(c);
     }
+
 }
 #endif
 
@@ -317,10 +318,10 @@ void  sdcard_io_high_speed() //ZP SPI SD card reader
 void init_lcd_spi()
 {
     //Configure PB8, PB11, and PB14 as GPIO outputs.
-    RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
-    GPIOB->MODER &=~ 0b1100001100001100000000000000; //=0x4104000
-    GPIOB->MODER |=  0b0100000100000100000000000000;
+    GPIOB->MODER |= GPIO_MODER_MODER8_0 | GPIO_MODER_MODER14_0 | GPIO_MODER_MODER11_0;
+    //Call init_spi1_slow() to configure SPI1.
     init_spi1_slow();
+    //Call sdcard_io_high_speed() to make SPI1 fast.
     sdcard_io_high_speed();
 }
 
