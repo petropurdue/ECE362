@@ -65,17 +65,19 @@ void printCursor(int a) {
 	 LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, BLUE);
 }
 
+//ditching printString for Ziro's drawString in command.c
 void printString(char * string, int x, int p) { // *HELPED*
     //int y = 100;
     //int x = 0;
-    for(int i = 0; string[i] != '\0'; i++) {
+    int checker = 0;
+    for(int i = checker; string[i] != '\0'; i++) {
         LCD_DrawChar((10 + 10) + (x * 10), y, WHITE, BLACK, string[i], (4 * 4), 1);
-        //nano_wait(50000000);
-        if ((x * 10) >= 200) {
-            y += 20;
-            x = (0 - 1);
-        }
-        x++;
+	    
+	if (200 <= (10 * x)) {
+	    x = (0 - 1);
+	    y += 20;
+	}
+        x += 1;
     }
     y += (10 + 10);
 }
@@ -109,10 +111,6 @@ void init_usart5()//Emir Lab10
     USART5->CR1 |= USART_CR1_TE;
     USART5 -> CR1 |= USART_CR1_UE;
     while(!(USART5->ISR & USART_ISR_TEACK)&&(USART5->ISR &USART_ISR_REACK));
-
-
-
-
 }
 
 char interrupt_getchar()//Emir Lab10
