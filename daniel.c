@@ -62,7 +62,8 @@ void emptyFileList() {
 }
 
 void printCursor(int a) {
-	 LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, BLUE);
+	//change color to whatever!! 
+	 LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, RED);
 }
 
 //ditching printString for Ziro's drawString in command.c
