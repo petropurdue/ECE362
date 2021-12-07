@@ -4,6 +4,10 @@
 #include "fifo.h"
 #include "tty.h"
 #include "lcd.h"
+//#include "daniel.h"
+#include <stddef.h>
+#include <string.h>
+
 #define FIFOSIZE 16
 char serfifo[FIFOSIZE];
 int seroffset = 0;
@@ -39,8 +43,6 @@ void init_usart5()//Emir Lab10
     while(!(USART5->ISR & USART_ISR_TEACK)&&(USART5->ISR &USART_ISR_REACK));
 
 
-
-
 }
 
 char interrupt_getchar()//Emir Lab10
@@ -50,7 +52,6 @@ char interrupt_getchar()//Emir Lab10
     }
     char ch = fifo_remove(&input_fifo);
     return ch;
-
 }
 
 int __io_putchar(int c) //Emir Lab10
@@ -109,11 +110,17 @@ int main() {
 
     //initialization fxns
     print_pizza();
+
+    //Set up UI
     quickLCDinit();
     quickLCDinit();
-    printcommand("my custom function is working");
-    //drawstring(0, 0, 0xFFFF, 0x0000, "All I can think of is fuck off but I don't think that's appropriate :(", 16, 0);
-    drawstring(0, 0, 0xFFFF, 0x0000, "wwwwwwwwwwwwwwwwwwwwwwwwwwwwaw", 16, 0);
+    UIInit();
+
+    char ninesounds[9][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four"};
+    InitBindUI(ninesounds);
+
+
+    //printcommand("drawfillrect 0 0 200 200 f81f");
 
     //any additional comands can be manually inputted here
     command_shell();

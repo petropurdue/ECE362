@@ -6,6 +6,8 @@
 #include "commands.h"
 #include <string.h>
 #include <stdio.h>
+#include <stddef.h>
+
 
 // Data structure for the mounted file system.
 FATFS fs_storage;
@@ -434,9 +436,74 @@ void drawline(int argc, char *argv[])
     LCD_DrawLine(x1,y1,x2,y2,c);
 }
 
-void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint,int fontsize, int mode)
-{//max string length is 30 characters. It does not matter if it is a long character (ex lll vs www).
-    LCD_DrawString(xcord, ycord, FGcol, BGcol, stringtoprint, fontsize, mode);
+void UIInit()
+{
+    //SetBG
+        int x1 = 0;
+        int y1 = 0;
+        int x2 = 240;
+        int y2 = 320;
+        int c = 0;
+        LCD_DrawFillRectangle(x1,y1,x2,y2,c);
+}
+
+void InitBindUI(char ninesounds[9][60]) //zp UI initialization
+{
+    LCD_DrawString(0, 0, 0xF800, 0000, "Epic ECE369 .wav Player" , 16, 0);
+    LCD_DrawString(0, 16, 0xF800, 0000, "Set Binds Mode" , 16, 0);
+    drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
+    drawstring(0, 3, 0xFFFF, 0000, "           SD VIEW:");
+
+    //Print the next 9  songs
+    for (int i = 4; i < 4+9; i++)
+    {
+        drawstring(2,i,0x001F,0000,ninesounds[i-4]);
+    }
+
+    drawstring(0,13,0xF800,0000,"------------------------------");
+    drawstring(0,14,0X07FF,0000,"Controls:");
+    drawstring(0,15,0X07FF,0000,"A: Cursor Up   B: Cursor Down");
+    drawstring(0,16,0X07FF,0000,"C: Enter Dir.  D: Exit Dir.");
+    drawstring(0,17,0x07FF,0000,"Press 1-9 to bind to the");
+    drawstring(0,18,0x07FF,0000,"selected sound");
+}
+
+void InitNPUI() //zp UI initialization
+{
+    LCD_DrawString(0, 0, 0xF800, 0000, "Epic ECE362 .wav Player" , 16, 0);
+    LCD_DrawString(0, 16, 0xF800, 0000, "Now Playing" , 16, 0);
+    drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
+
+}
+
+void writecommand(char * inputarr) //zp command integreation
+{
+    int stringlength = strlen(inputarr);
+    //take an input string and append \0 to i, then run parse_command on it
+    char line [100];
+    line[9] = '\0';
+    parse_command(line);
+}
+
+void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint)
+{
+    //max string length is 30 characters. It does not matter if it is a long character (ex lll vs www).
+    //maximum number of lines is 19
+
+    //If string length is longer than 30, make it end in ".."
+    xcord = xcord * 8;
+    ycord = ycord * 16;
+    int stringlength = strlen(stringtoprint);
+    //printf("\nString length is %d\n",stringlength);
+    //printf("pizza");
+    char  shortstring[30];
+    strncpy(shortstring,stringtoprint,29);
+    LCD_DrawString(xcord, ycord, FGcol, BGcol, shortstring, 16, 0);
+    if (stringlength > 30)
+    {
+        //printf("\nlong string detected!\n");
+        LCD_DrawString(224, ycord, FGcol, BGcol, "..", 16, 0);
+    }
 }
 
 void drawrect(int argc, char *argv[])
@@ -562,8 +629,6 @@ void quickLCDinit(void) //ZP lcd stuff
     line[8] = '\0';
     line[9] = '\0';
     parse_command(line);
-
-
 }
 
 void printcommand(char * arr) //zp terminal execution

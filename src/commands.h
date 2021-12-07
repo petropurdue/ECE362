@@ -12,7 +12,11 @@ void command_shell(void);
 //mine
 void print_pizza(void);
 void printcommand(char * arr);
-void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint,int fontsize, int mode);
+void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint);
 void quickLCDinit(void);
+void UIInit(void);
+void writecommand(char * inputarr);
+void InitBindUI(char ninesounds[9][60]) ;
+void InitNPUI(void);
 
 #endif /* __COMMANDS_H_ */
