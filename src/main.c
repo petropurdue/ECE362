@@ -116,9 +116,13 @@ int main() {
     quickLCDinit();
     UIInit();
 
-    char ninesounds[9][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four"};
-    InitBindUI(ninesounds);
+    int songprog = 0;
+    int songdur = 300;
 
+    char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
+    //InitBindUI(ninesounds);
+    InitNPUI(ninesounds);
+    NPUIupdate(songdur, songprog,ninesounds);
 
     //printcommand("drawfillrect 0 0 200 200 f81f");
 
