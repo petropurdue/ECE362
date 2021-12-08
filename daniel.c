@@ -19,8 +19,8 @@ FRESULT scan_files (char* path);
 
 int y = 0;
 int cursorY = 0;
-TCHAR dirList[40][40];
-TCHAR fileList[40][40];
+TCHAR dirList[40][40]; //array of directories
+TCHAR fileList[40][40]; //array of files
 int selector = 0;
 FATFS FatFs;
 FIL fil;
@@ -72,7 +72,7 @@ void printString(char * string, int x, int p) { // *HELPED*
     //int x = 0;
     int checker = 0;
     for(int i = checker; string[i] != '\0'; i++) {
-        LCD_DrawChar((10 + 10) + (x * 10), y, WHITE, BLACK, string[i], (4 * 4), 1);
+        LCD_DrawChar((x * 10) + (10 + 10), y, WHITE, BLACK, string[i], (4 * 4), 1);
 	    
 	if (200 <= (10 * x)) {
 	    x = (0 - 1);
