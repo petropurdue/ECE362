@@ -29,13 +29,13 @@ TCHAR str[40];
 DIR currDir;
 static FILINFO fno;
 
-void init_keyPad() { // uses 456B *HELPED*
+void init_keyPad() { // uses ABCD
     RCC -> AHBENR |= RCC_AHBENR_GPIOCEN;
     GPIOC -> MODER &= ~0xffff;
-    GPIOC -> MODER |= 0x55;
-    GPIOC -> ODR |= 0xc;
-    GPIOC -> PUPDR &= ~0xff00;
-    GPIOC -> PUPDR |= 0xaa00;
+    GPIOC -> MODER |= 0x5500;
+    GPIOC -> ODR |= 0x10;
+    GPIOC -> PUPDR &= ~0xff;
+    GPIOC -> PUPDR |= 0xaa;
 }
 
 void printCurrDir() {
@@ -205,7 +205,7 @@ FRESULT scan_files (char* path) {
 
 int main() {
     //init_usart5();
-	init_keyPad();
+    init_keyPad();
     enable_tty_interrupt();
     setbuf(stdin,0);
     setbuf(stdout,0);
@@ -239,14 +239,14 @@ int main() {
     //command_shell();
     int oldvalue = 0;
     for(;;) { // this is bad, should implement external interrupt
-    	if(((GPIOC->IDR & 0x20) != 0)) { // move down dir
+    	if(((GPIOC->IDR & 0x2) != 0)) { // move down dir (keypad C)
     		if(oldvalue == 0) {
 				selector++;
 				printCurrDir();
 				oldvalue = 1;
     		}
     	}
-    	else if(((GPIOC->IDR & 0x80) != 0)) { // move up dir
+    	else if(((GPIOC->IDR & 0x8) != 0)) { // move up dir (keypad A)
     		if(oldvalue == 0) {
 				selector--;
 				printCurrDir();
@@ -256,7 +256,7 @@ int main() {
     	// IN THIS ELSE IF RIGHT BELOW THIS IS WHERE TO IMPLEMENT MUSIC PLAYING...
     	// AN IF STATEMENT NEEDS TO CHECK IF FILELIST[SELECTOR] IS A FILE OR FOLDER
     	// IF ITS A FILE PLAY IT, IF ITS A FOLDER, MOVE INTO IT WHICH IT ALREADY DOES
-    	else if(((GPIOC->IDR & 0x40) != 0) && selector >= 0) { // enter dir
+    	else if(((GPIOC->IDR & 0x4) != 0) && selector >= 0) { // enter dir (keypad B)
     		if(oldvalue == 0) {
     			y = 0;
 				LCD_Clear(BLACK);
@@ -270,7 +270,7 @@ int main() {
 				oldvalue = 1;
     		}
     	}
-    	else if(((GPIOC->IDR & 0x10) != 0)) { // prev dir
+    	else if(((GPIOC->IDR & 0x1) != 0)) { // prev dir (keypad D)
     		if(oldvalue == 0) {
     			y = 0;
 				LCD_Clear(BLACK);
