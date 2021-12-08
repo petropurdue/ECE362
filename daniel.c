@@ -31,11 +31,11 @@ static FILINFO fno;
 
 void init_keyPad() { // uses 456B *HELPED*
     RCC -> AHBENR |= RCC_AHBENR_GPIOCEN;
-    GPIOC -> MODER &= ~0x0000ffff;
-    GPIOC -> MODER |= 0x00000055;
-    GPIOC -> ODR |= 0x0000000c;
-    GPIOC -> PUPDR &= ~0x0000ff00;
-    GPIOC -> PUPDR |= 0x0000aa00;
+    GPIOC -> MODER &= ~0xffff;
+    GPIOC -> MODER |= 0x55;
+    GPIOC -> ODR |= 0xc;
+    GPIOC -> PUPDR &= ~0xff00;
+    GPIOC -> PUPDR |= 0xaa00;
 }
 
 void printCurrDir() {
@@ -239,14 +239,14 @@ int main() {
     //command_shell();
     int oldvalue = 0;
     for(;;) { // this is bad, should implement external interrupt
-    	if(((GPIOC->IDR & 0x00000020) != 0)) { // move down dir
+    	if(((GPIOC->IDR & 0x20) != 0)) { // move down dir
     		if(oldvalue == 0) {
 				selector++;
 				printCurrDir();
 				oldvalue = 1;
     		}
     	}
-    	else if(((GPIOC->IDR & 0x00000080) != 0)) { // move up dir
+    	else if(((GPIOC->IDR & 0x80) != 0)) { // move up dir
     		if(oldvalue == 0) {
 				selector--;
 				printCurrDir();
@@ -256,7 +256,7 @@ int main() {
     	// IN THIS ELSE IF RIGHT BELOW THIS IS WHERE TO IMPLEMENT MUSIC PLAYING...
     	// AN IF STATEMENT NEEDS TO CHECK IF FILELIST[SELECTOR] IS A FILE OR FOLDER
     	// IF ITS A FILE PLAY IT, IF ITS A FOLDER, MOVE INTO IT WHICH IT ALREADY DOES
-    	else if(((GPIOC->IDR & 0x00000040) != 0) && selector >= 0) { // enter dir
+    	else if(((GPIOC->IDR & 0x40) != 0) && selector >= 0) { // enter dir
     		if(oldvalue == 0) {
     			y = 0;
 				LCD_Clear(BLACK);
@@ -270,7 +270,7 @@ int main() {
 				oldvalue = 1;
     		}
     	}
-    	else if(((GPIOC->IDR & 0x00000010) != 0)) { // prev dir
+    	else if(((GPIOC->IDR & 0x10) != 0)) { // prev dir
     		if(oldvalue == 0) {
     			y = 0;
 				LCD_Clear(BLACK);
