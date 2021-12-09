@@ -5,21 +5,31 @@
 #include "tty.h"
 #include "lcd.h"
 #include "ff.h"
+#include "ffconf.h"
+#include "diskio.h"
 #include "daniel.h"
+#include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "wav2.h"
+
+
 
 //Definitions
 #define FIFOSIZE 16
+#define SAMPLES 8000
+#define BIND 69
+#define PLAY 70
 char serfifo[FIFOSIZE];
 int seroffset = 0;
+int binds[9];
 
 
 //Daniel Initializations
 int y = 0;
 int cursorY = 0;
-TCHAR dirList[40][40]; //array of directories
-TCHAR fileList[40][40]; //array of files
+TCHAR dirList[40][60]; //array of directories
+TCHAR fileList[40][60]; //array of files
 int selector = 0;
 FATFS FatFs;
 FIL fil;
@@ -239,7 +249,9 @@ void printString(char * string, int x, int p) {
     y += (10 + 10);
 }
 
-FRESULT scan_files (char* path) {
+FRESULT scan_files (char* path)
+{//populates array with directory
+
     FRESULT res;
     DIR dir;
     UINT i;
@@ -256,8 +268,6 @@ FRESULT scan_files (char* path) {
                 //printString(path,0,100);
                 strcpy(fileList[selector],fno.fname);
                 selector++;
-                //res = scan_files(path);                    /* Enter the directory */
-                //if (res != FR_OK) break;
                 path[i] = 0;
             } else {                                       /* It is a file. */
                 //printString(fno.fname,0,120);
@@ -271,10 +281,89 @@ FRESULT scan_files (char* path) {
     return res;
 }
 
+int wav_function(char* filename){
 
+           sWavHeader header;
+           FIL f;
+           BYTE buffer[SAMPLES];
+           UINT hs, br, br2;
+           uint32_t fileLength;
+           FATFS FatFs;
+           FRESULT fres;
 
-//#define ZIROFXNS
+       //    char* filename = "SINE8.WAV";
+           f_open(&f, filename, FA_READ);
+
+           f_read(&f, &header, sizeof(sWavHeader) ,&hs);
+           f_read(&f, &buffer, sizeof(buffer), &br);
+           setup(&header, &buffer);
+           while(!f_eof(f)){
+                   if(DMA1->ISR & DMA_ISR_HTIF3){
+                       DMA1->IFCR = DMA_IFCR_CHTIF3;
+                       f_read(&f, &buffer, SAMPLES/2, &br);
+                   }
+                   if(DMA1->ISR & DMA_ISR_TCIF3){
+                       DMA1->IFCR = DMA_IFCR_CTCIF3;
+                       f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
+                   }
+               }
+
+           f_close(&f);
+
+           return 0;
+}
+
+void setup(sWavHeader *header, BYTE buffer){
+
+    //timer 6 enable
+    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
+
+    TIM6->PSC = (24)-1;
+    TIM6->ARR = (2000000/(header->SampleRate*header->BitsPerSample)) -1;
+    TIM6->DIER |= TIM_DIER_UDE;
+    TIM6->CR2 |= 0x20;
+    TIM6->CR1 |= TIM_CR1_CEN;
+
+    //setting up the DMA
+    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel3-> CMAR = (uint32_t)buffer;
+    if(header->BitsPerSample == 8){
+    DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
+    DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+    }
+    else{
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
+        DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
+    }
+    DMA1_Channel3->CNDTR = SAMPLES;
+    DMA1_Channel3->CCR |= DMA_CCR_DIR;
+    DMA1_Channel3->CCR |= DMA_CCR_MINC;
+    DMA1_Channel3->CCR |= DMA_CCR_CIRC;
+    DMA1_Channel3->CCR |= DMA_CCR_HTIE | DMA_CCR_TCIE;
+    DMA1_Channel3->CCR |= DMA_CCR_EN;
+    NVIC->ISER[0] = 1<<DMA1_Channel2_3_IRQn;
+
+    //Set up the DAC
+    RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+    DAC->CR |= DAC_CR_TEN1;
+    DAC->CR |= DAC_CR_EN1;
+}
+
+#define ZIROFXNS
 #if defined(ZIROFXNS)
+
+//Binding fxns
+void bindupdate(int goup, int godown, int currloc)
+{
+    //Print the next 9  songs
+    for (int i = 0; i < 10; i++)
+    {
+        drawstring(2,i+4,0x001F,0000,fileList[currloc + i]);
+    }
+    return;
+}
+
 
 int main() {
     init_usart5();
@@ -285,33 +374,67 @@ int main() {
 
     //initialization fxns
     print_pizza();
+    enable_sdcard();
+    int mode = BIND;
 
     //Set up UI
     quickLCDinit();
     quickLCDinit();
     UIInit();
 
+
     int songprog = 0;
     int songdur = 300;
 
+
+
+    fres = f_mount(&FatFs, "", 1);
+    fres = f_getcwd(str, 40);  /* Get current directory path */
+    //printString(str, 0, 0);
+    fres = scan_files(str);
+
     char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
-    //InitBindUI(ninesounds);
-    InitNPUI(ninesounds);
-    NPUIupdate(songdur, songprog,ninesounds);
+    //Binds UI
+    //This one will use cursor and scrolling
+    InitBindUI(fileList);
+    bindupdate(0,0,0);
 
-    //printcommand("drawfillrect 0 0 200 200 f81f");
+    //Binds UI
+    //This one will use cursor and scrolling
+    InitBindUI(fileList);
+    bindupdate(0,0,0);
 
-    //any additional comands can be manually inputted here
+    //NP UI
+   //This one will not use cursor or scrolling
+   //InitNPUI(ninesounds);
+   //NPUIupdate(songdur, songprog,ninesounds);
+
+
     command_shell();
+
+    //Comprehend button presses
+    //if # pressed
+    if (mode == BIND)
+    {
+        mode = PLAY;
+
+    }
+    else
+    {
+        mode = BIND;
+    }
+
 
 }
 
 #endif
 
-#define Daniel
+//#define Daniel
 #if defined(Daniel)
 
 int main() {
+
+
     //init_usart5();
     init_keyPad();
     enable_tty_interrupt();
@@ -328,12 +451,14 @@ int main() {
 
     enable_sdcard();
     fres = f_mount(&FatFs, "", 1);
+
     if (fres != FR_OK) {
         printString("SD Card did not mount", 0, 20);
     }
     else {
         printString("SD Card Mounted", 0, 40);
     }
+
 
     fres = f_getcwd(str, 40);  /* Get current directory path */
     printString(str, 0, 0);
@@ -389,7 +514,10 @@ int main() {
         else {
             oldvalue = 0;
         }
+
     }
+
+
 }
 
 #endif
