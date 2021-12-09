@@ -28,6 +28,7 @@ int binds[9];
 sWavHeader header;
 FIL f;
 BYTE buffer[SAMPLES];
+uint16_t buffer16[SAMPLES/2];
 UINT hs, br, br2;
 uint32_t fileLength;
 FRESULT fres;
@@ -317,13 +318,14 @@ void setup(){
     //setting up the DMA
     RCC->AHBENR |= RCC_AHBENR_DMA1EN;
     DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel3-> CMAR = (uint32_t)buffer;
     if(header.BitsPerSample == 8){
+        DMA1_Channel3-> CMAR = (uint32_t)buffer;
         DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
         DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
         DMA1_Channel3->CNDTR = SAMPLES;
     }
     else{
+        DMA1_Channel3-> CMAR = (uint32_t)buffer16;
         DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
         DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
         DMA1_Channel3->CNDTR = SAMPLES/2;
@@ -348,27 +350,39 @@ void setup(){
 void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
     if(DMA1->ISR & DMA_ISR_HTIF3){
         DMA1->IFCR |= DMA_IFCR_CHTIF3;
-        f_read(&f, &buffer, SAMPLES/2, &br);
-        if(br != SAMPLES/2){
-            finish = 1;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer, SAMPLES/2, &br);
+            if(br != SAMPLES/2){
+                        finish = 1;
+                    }
         }
         if(header.BitsPerSample == 16){
-            for(int i = 0; i<SAMPLES/2; i++){
+            f_read(&f, &buffer16, SAMPLES/2, &br);
+            if(br != SAMPLES/2){
+                finish = 1;
+            }
+            for(int i = 0; i<SAMPLES/4; i++){
                 //buffer[i] ^= 0x80;
-                buffer[i] += 0x8000;
+                buffer16[i] += 0x8000;
             }
         }
     }
     if(DMA1->ISR & DMA_ISR_TCIF3){
         DMA1->IFCR |= DMA_IFCR_CTCIF3;
-        f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
-        if(br != SAMPLES/2){
-                    finish = 1;
-                }
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
+            if(br != SAMPLES/2){
+                        finish = 1;
+                    }
+        }
         if(header.BitsPerSample == 16){
-            for(int i = SAMPLES/2; i<SAMPLES; i++){
+            f_read(&f, &buffer16[SAMPLES/4], SAMPLES/2, &br2);
+            if(br != SAMPLES/2){
+                finish = 1;
+            }
+            for(int i = SAMPLES/4; i<SAMPLES/2; i++){
                 //buffer[i] ^= 0x80;
-                buffer[i] += 0x8000;
+                buffer16[i] += 0x8000;
             }
         }
     }
