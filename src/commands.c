@@ -454,11 +454,7 @@ void InitBindUI(char ninesounds[10][60]) //zp UI initialization
     drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
     drawstring(0, 3, 0xFFFF, 0000, "           SD VIEW:");
 
-    //Print the next 9  songs
-    for (int i = 4; i < 4+10; i++)
-    {
-        drawstring(2,i,0x001F,0000,ninesounds[i-4]);
-    }
+
 
     drawstring(0,14,0xF800,0000,"------------------------------");
     drawstring(0,15,0X07FF,0000,"Controls:");
@@ -518,6 +514,9 @@ void NPUIupdate(int songdur,int songprog,char boundsounds[10][60])
 
 }
 
+
+
+/*
 void writecommand(char * inputarr) //zp command integreation
 {
     int stringlength = strlen(inputarr);
@@ -526,7 +525,15 @@ void writecommand(char * inputarr) //zp command integreation
     line[9] = '\0';
     parse_command(line);
 }
+*/
 
+
+void drawfolder(char * foldername)
+{
+    char str[9];
+    strncpy(str,foldername,9);
+    LCD_DrawString(19*8, 3*16, 0xF81F, 0, str, 16, 0);
+}
 void drawstring(int xcord, int ycord, int FGcol, int BGcol, char * stringtoprint)
 {
     //max string length is 30 characters. It does not matter if it is a long character (ex lll vs www).

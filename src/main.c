@@ -23,7 +23,15 @@
 char serfifo[FIFOSIZE];
 int seroffset = 0;
 int binds[9];
+int cursorpos = 0;
 
+//Keypad necessities
+const char keymap[] = "DCBA#9630852*741";
+uint8_t hist[16];
+uint8_t col;
+char queue[2];
+int qin;
+int qout;
 
 //Daniel Initializations
 int y = 0;
@@ -356,10 +364,8 @@ void setup(sWavHeader *header, BYTE buffer){
     DAC->CR |= DAC_CR_EN1;
 }
 
-//#define ZIROFXNS
-#if defined(ZIROFXNS)
 
-//Binding fxns
+//Keypad Fxns (Emir Lab 6)
 void enable_ports(void) { //Emir lab6
     //initc
     RCC->AHBENR |= 0x00080000;
@@ -368,32 +374,11 @@ void enable_ports(void) { //Emir lab6
     GPIOC->PUPDR &= ~0xff;
     GPIOC->PUPDR |= 0xaa;
     RCC->AHBENR |= 0x00040000;
-    GPIOB->MODER &= ~0x3fffff;
-    GPIOB->MODER |= 0x155555;
+    //GPIOB->MODER &= ~0x3fffff;
+    //GPIOB->MODER |= 0x155555;
 }
 
 uint16_t msg[8] = { 0x0000,0x0100,0x0200,0x0300,0x0400,0x0500,0x0600,0x0700 };
-extern const char font[];
-
-void setup_dma(void) { //Emir lab6
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-    DMA1_Channel2->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel2->CPAR = (uint32_t) &(GPIOB->ODR);
-    DMA1_Channel2->CMAR = (uint32_t) msg;
-    DMA1_Channel2->CNDTR = 8;
-    DMA1_Channel2->CCR |= DMA_CCR_DIR;
-    DMA1_Channel2->CCR |= DMA_CCR_MINC;
-    DMA1_Channel2->CCR |= DMA_CCR_PSIZE_0;
-    DMA1_Channel2->CCR &= ~DMA_CCR_PSIZE_1;
-    DMA1_Channel2->CCR |= DMA_CCR_MSIZE_0;
-    DMA1_Channel2->CCR &= ~DMA_CCR_MSIZE_1;
-    DMA1_Channel2->CCR |= DMA_CCR_CIRC;
-
-}
-
-void enable_dma(void) {//Emir lab6
-    DMA1_Channel2->CCR |= DMA_CCR_EN;
-}
 
 void init_tim2(void) {
 
@@ -412,13 +397,292 @@ void append_display(char val) {
            nchar &= ~(0xf00);
            msg[i] &= ~(0x0ff);
            msg[i] |=nchar;
-           //drawstring(0,0,0xFFFF,0x0000,)
+
     }
     msg[7] &= ~0xff;
     msg[7] |= val;
 
 }
 
+void drive_column(int c)
+{
+    GPIOC->BSRR = 0xf00000 | (1 << (c + 4));
+}
+
+int read_rows()
+{
+    return GPIOC->IDR & 0xf;
+}
+
+void push_queue(int n) {
+    n = (n & 0xff) | 0x80;
+    queue[qin] = n;
+    qin ^= 1;
+}
+
+uint8_t pop_queue() {
+    uint8_t tmp = queue[qout] & 0x7f;
+    queue[qout] = 0;
+    qout ^= 1;
+    return tmp;
+}
+
+void update_history(int c, int rows)
+{
+    for(int i = 0; i < 4; i++) {
+        hist[4*c+i] = (hist[4*c+i]<<1) + ((rows>>i)&1);
+        if (hist[4*c+i] == 1)
+          push_queue(4*c+i);
+    }
+}
+
+void init_tim6() {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
+    TIM6->PSC = 48 - 1;
+    TIM6->ARR = 1000 - 1;
+    TIM6->DIER |= TIM_DIER_UIE;
+    TIM6->CR1 |= TIM_CR1_CEN;
+    NVIC->ISER[0] |= 1 << TIM6_DAC_IRQn;
+}
+
+void TIM6_DAC_IRQHandler(void) {
+    TIM6->SR &= ~TIM_SR_UIF;
+    int rows = read_rows();
+    update_history(col, rows);
+    col = (col + 1) & 3;
+    drive_column(col);
+}
+
+char get_keypress() {
+    for(;;) {
+        asm volatile ("wfi" : :);   // wait for an interrupt
+        if (queue[qout] == 0)
+            continue;
+        return keymap[pop_queue()];
+    }
+}
+
+void setupkeypad()
+{
+    enable_ports();
+    init_tim2();
+    init_tim6();
+    return;
+}
+
+void rendercursor(void)
+{
+    //account for out of bounds
+    if (cursorpos < 0)
+    {
+        cursorpos = 9;
+        drawstring(1, 4, 0xFFFF, 0000, " ");
+        drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
+    }
+    else if (cursorpos > 9)
+    {
+        cursorpos = 0;
+        drawstring(1, 13, 0xFFFF, 0000, " ");
+        drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
+    }
+    else
+    {
+        drawstring(1, cursorpos+3, 0xFFFF, 0000, " ");
+        drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
+        if (cursorpos !=9)
+            drawstring(1, cursorpos+5, 0xFFFF, 0000, " ");
+    }
+}
+
+void dispsongsBM()
+{
+    //Bound songs list
+    for (int i = 0; i < 10; i++)
+    {
+        drawstring(2,i+4,0x001F,0000,fileList[i]);
+    }
+}
+
+void resetcursor()
+{
+    cursorpos = 0;
+    for(int i = 5; i < 14; i++)
+    {
+        drawstring(1,i,0xffff,0,"                    ");
+    }
+    rendercursor();
+}
+
+void clearscreen()
+{
+    UIInit();
+    //because fuck you, that's why.
+}
+
+int keyinput(char key,int mode)
+{//whenever a key is inputted, it will read this. This is like a brain function :)
+    printf("%c",key);
+
+    if (key == '#')
+    {//switch modes
+        if (mode == BIND)
+                    {
+                        mode = PLAY;
+                        clearscreen();
+                        InitNPUI(fileList);
+                        return PLAY;
+
+                    }
+                    else
+                    {
+                        mode = BIND;
+                        clearscreen();
+                        InitBindUI(fileList);
+                        dispsongsBM();
+                        return BIND;
+                    }
+    }
+    if (mode == BIND)
+    {
+        dispsongsBM();
+        if (key == 'A')
+        {//Up
+            cursorpos--;
+            selector--;
+            rendercursor();
+        }
+        if (key == 'B')
+        {// >>
+            fres = f_chdir(fileList[selector]);
+            fres = f_getcwd(str, 40);  /* Get current directory path */
+            y = 0;
+            drawfolder(str);
+            emptyFileList();
+            fres = scan_files(str);
+            resetcursor();
+        }
+        if (key == 'C')
+        {//Down
+            cursorpos++;
+            selector++;
+            rendercursor();
+
+        }
+        if (key == 'D')
+        {// ..
+            fres = f_chdir("..");
+            fres = f_getcwd(str, 40);  /* Get current directory path */
+            emptyFileList();
+            fres = scan_files(str);
+            resetcursor();
+        }
+        if (key == '1')
+        {
+
+        }
+        if (key == '2')
+        {
+
+        }
+        if (key == '3')
+        {
+
+        }
+        if (key == '4')
+        {
+
+        }
+        if (key == '5')
+        {
+
+        }
+        if (key == '6')
+        {
+
+        }
+        if (key == '7')
+        {
+
+        }
+        if (key == '8')
+        {
+
+        }
+        if (key == '9')
+        {
+
+        }
+        if (key == '0')
+        {
+
+        }
+        dispsongsBM();
+        return BIND;
+    }
+    else //mode == PLAY
+    {
+        if (key == 'A')
+        {
+
+        }
+        if (key == 'B')
+        {
+
+        }
+        if (key == 'C')
+        {
+
+        }
+        if (key == 'D')
+        {
+
+        }
+        if (key == '1')
+        {
+
+        }
+        if (key == '2')
+        {
+
+        }
+        if (key == '3')
+        {
+
+        }
+        if (key == '4')
+        {
+
+        }
+        if (key == '5')
+        {
+
+        }
+        if (key == '6')
+        {
+
+        }
+        if (key == '7')
+        {
+
+        }
+        if (key == '8')
+        {
+
+        }
+        if (key == '9')
+        {
+
+        }
+        if (key == '0')
+        {
+
+        }
+        return PLAY;
+    }
+}
+
+#define ZIROFXNS
+#if defined(ZIROFXNS)
 int main() {
     init_usart5();
     enable_tty_interrupt();
@@ -430,52 +694,38 @@ int main() {
     print_pizza();
     enable_sdcard();
     int mode = BIND;
+    setupkeypad();
+    cursorpos = 0;
 
     //Set up UI
     quickLCDinit();
     quickLCDinit();
     UIInit();
-
+    rendercursor();
 
     int songprog = 0;
     int songdur = 300;
 
-
-
     fres = f_mount(&FatFs, "", 1);
     fres = f_getcwd(str, 40);  /* Get current directory path */
-    //printString(str, 0, 0);
+    printString(str, 0, 0);
     fres = scan_files(str);
 
-    char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
     //Binds UI
     //This one will use cursor and scrolling
     InitBindUI(fileList);
-    bindupdate(0,0,0);
+    dispsongsBM();
 
-    //Binds UI
-    //This one will use cursor and scrolling
-    InitBindUI(fileList);
-    bindupdate(0,0,0);
 
     //NP UI
    //This one will not use cursor or scrolling
-   //InitNPUI(ninesounds);
    //NPUIupdate(songdur, songprog,ninesounds);
 
+    //command_shell();
 
-    command_shell();
-
-    //Comprehend button presses
-    //if # pressed
-    if (mode == BIND)
-    {
-        mode = PLAY;
-
-    }
-    else
-    {
-        mode = BIND;
+    for(;;) {
+        char key = get_keypress();
+        mode = keyinput(key,mode);
     }
 
 
@@ -483,7 +733,7 @@ int main() {
 
 #endif
 
-#define Daniel
+//#define Daniel
 #if defined(Daniel)
 
 int main() {
