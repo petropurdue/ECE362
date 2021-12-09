@@ -4,14 +4,30 @@
 #include "fifo.h"
 #include "tty.h"
 #include "lcd.h"
-//#include "daniel.h"
+#include "ff.h"
+#include "daniel.h"
 #include <stddef.h>
 #include <string.h>
 
+//Definitions
 #define FIFOSIZE 16
 char serfifo[FIFOSIZE];
 int seroffset = 0;
 
+
+//Daniel Initializations
+int y = 0;
+int cursorY = 0;
+TCHAR dirList[40][40]; //array of directories
+TCHAR fileList[40][40]; //array of files
+int selector = 0;
+FATFS FatFs;
+FIL fil;
+FRESULT fres;
+TCHAR str[40];
+DIR currDir;
+
+//Lab 10 Fxns
 void init_usart5()//Emir Lab10
 {
     //GPIOC
@@ -101,36 +117,6 @@ void USART3_4_5_6_7_8_IRQHandler(void) //Emir Lab10
             }
         }
 
-int main() {
-    init_usart5();
-    enable_tty_interrupt();
-    setbuf(stdin,0);
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-
-    //initialization fxns
-    print_pizza();
-
-    //Set up UI
-    quickLCDinit();
-    quickLCDinit();
-    UIInit();
-
-    int songprog = 0;
-    int songdur = 300;
-
-    char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
-    //InitBindUI(ninesounds);
-    InitNPUI(ninesounds);
-    NPUIupdate(songdur, songprog,ninesounds);
-
-    //printcommand("drawfillrect 0 0 200 200 f81f");
-
-    //any additional comands can be manually inputted here
-    command_shell();
-
-}
-
 //SPI fxns
 void init_spi1_slow() //ZP SPI SD card reader
 {
@@ -199,3 +185,211 @@ void init_lcd_spi() //ZP SPI LCD screen
     sdcard_io_high_speed();
 }
 
+//Daniel Fxns
+void init_keyPad() { // uses ABCD
+    RCC -> AHBENR |= RCC_AHBENR_GPIOCEN;
+    GPIOC -> MODER &= ~0xffff;
+    GPIOC -> MODER |= 0x5500;
+    GPIOC -> ODR |= 0x10;
+    GPIOC -> PUPDR &= ~0xff;
+    GPIOC -> PUPDR |= 0xaa;
+}
+
+void printCurrDir() {
+    LCD_Clear(BLACK);
+    fres = f_getcwd(str, 40);  /* Get current directory path */
+    y = 0;
+    printString(str, 0, 0);
+    //fres = scan_files(str);
+    printFileList();
+}
+
+void printFileList() { // CHANGE SO SELECTOR DOES NOT GO OUT OF BOUNDS
+    y = 40;
+    printCursor((selector + 2) * 20);
+    for(int i = 0; i < 40; i++) {
+        printString(fileList[i],0,0);
+    }
+}
+
+void emptyFileList() {
+    for(int i = 0; i < 40; i++) {
+        strcpy(fileList[i], " ");
+    }
+}
+
+void printCursor(int a) {
+    //change color to whatever!!
+     LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, RED);
+}
+
+void printString(char * string, int x, int p) {
+    //int y = 100;
+    //int x = 0;
+    int checker = 0;
+    for(int i = checker; string[i] != '\0'; i++) {
+        LCD_DrawChar((x * 10) + (10 + 10), y, WHITE, BLACK, string[i], (4 * 4), 1);
+
+    if (200 <= (10 * x)) {
+        x = (0 - 1);
+        y += 20;
+    }
+        x += 1;
+    }
+    y += (10 + 10);
+}
+
+FRESULT scan_files (char* path) {
+    FRESULT res;
+    DIR dir;
+    UINT i;
+    static FILINFO fno;
+    selector = 0;
+    res = f_opendir(&dir, path);                       /* Open the directory */
+    if (res == FR_OK) {
+        for (;;) {
+            res = f_readdir(&dir, &fno);                   /* Read a directory item */
+            if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+            if (fno.fattrib & AM_DIR) {                    /* It is a directory */
+                i = strlen(path);
+                sprintf(&path[i], "%s", fno.fname);
+                //printString(path,0,100);
+                strcpy(fileList[selector],fno.fname);
+                selector++;
+                //res = scan_files(path);                    /* Enter the directory */
+                //if (res != FR_OK) break;
+                path[i] = 0;
+            } else {                                       /* It is a file. */
+                //printString(fno.fname,0,120);
+                strcpy(fileList[selector],fno.fname);
+                selector++;
+            }
+        }
+        f_closedir(&dir);
+    }
+    selector = 0;
+    return res;
+}
+
+
+
+//#define ZIROFXNS
+#if defined(ZIROFXNS)
+
+int main() {
+    init_usart5();
+    enable_tty_interrupt();
+    setbuf(stdin,0);
+    setbuf(stdout,0);
+    setbuf(stderr,0);
+
+    //initialization fxns
+    print_pizza();
+
+    //Set up UI
+    quickLCDinit();
+    quickLCDinit();
+    UIInit();
+
+    int songprog = 0;
+    int songdur = 300;
+
+    char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
+    //InitBindUI(ninesounds);
+    InitNPUI(ninesounds);
+    NPUIupdate(songdur, songprog,ninesounds);
+
+    //printcommand("drawfillrect 0 0 200 200 f81f");
+
+    //any additional comands can be manually inputted here
+    command_shell();
+
+}
+
+#endif
+
+#define Daniel
+#if defined(Daniel)
+
+int main() {
+    //init_usart5();
+    init_keyPad();
+    enable_tty_interrupt();
+    setbuf(stdin,0);
+    setbuf(stdout,0);
+    setbuf(stderr,0);
+
+    //initialization fxns
+    //print_pizza();
+    quickLCDinit();
+    quickLCDinit();
+    LCD_Clear(BLACK);
+    //printString("hahahahaha gay gay gay", 0, 0);
+
+    enable_sdcard();
+    fres = f_mount(&FatFs, "", 1);
+    if (fres != FR_OK) {
+        printString("SD Card did not mount", 0, 20);
+    }
+    else {
+        printString("SD Card Mounted", 0, 40);
+    }
+
+    fres = f_getcwd(str, 40);  /* Get current directory path */
+    printString(str, 0, 0);
+    fres = scan_files(str);
+    printFileList();
+    int oldvalue = 0;
+    for(;;) { // this is bad, should implement external interrupt
+        if(((GPIOC->IDR & 0x2) != 0)) { // move down dir (keypad C)
+            if(oldvalue == 0) {
+                selector++;
+                printCurrDir();
+                oldvalue = 1;
+            }
+        }
+        else if(((GPIOC->IDR & 0x8) != 0)) { // move up dir (keypad A)
+            if(oldvalue == 0) {
+                selector--;
+                printCurrDir();
+                oldvalue = 1;
+            }
+        }
+        // IN THIS ELSE IF RIGHT BELOW THIS IS WHERE TO IMPLEMENT MUSIC PLAYING...
+        // AN IF STATEMENT NEEDS TO CHECK IF FILELIST[SELECTOR] IS A FILE OR FOLDER
+        // IF ITS A FILE PLAY IT, IF ITS A FOLDER, MOVE INTO IT WHICH IT ALREADY DOES
+        else if(((GPIOC->IDR & 0x4) != 0) && selector >= 0) { // enter dir (keypad B)
+            if(oldvalue == 0) {
+                y = 0;
+                LCD_Clear(BLACK);
+                fres = f_chdir(fileList[selector]);
+                fres = f_getcwd(str, 40);  /* Get current directory path */
+                y = 0;
+                printString(str, 0, 0);
+                emptyFileList();
+                fres = scan_files(str);
+                printCurrDir();
+                oldvalue = 1;
+            }
+        }
+        else if(((GPIOC->IDR & 0x1) != 0)) { // prev dir (keypad D)
+            if(oldvalue == 0) {
+                y = 0;
+                LCD_Clear(BLACK);
+                fres = f_chdir("..");
+                fres = f_getcwd(str, 40);  /* Get current directory path */
+                y = 0;
+                printString(str, 0, 0);
+                emptyFileList();
+                fres = scan_files(str);
+                printCurrDir();
+                oldvalue = 1;
+            }
+        }
+        else {
+            oldvalue = 0;
+        }
+    }
+}
+
+#endif
