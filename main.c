@@ -17,16 +17,29 @@
 
 //Definitions
 #define FIFOSIZE 16
+#define SAMPLES 8000
+#define BIND 69
+#define PLAY 70
 char serfifo[FIFOSIZE];
 int seroffset = 0;
-#define SAMPLES 8000
+int binds[9];
+
+//wav initializations
+sWavHeader header;
+FIL f;
+BYTE buffer[SAMPLES];
+UINT hs, br, br2;
+uint32_t fileLength;
+FATFS FatFs;
+FRESULT fres;
+int finish = 0;
 
 
 //Daniel Initializations
 int y = 0;
 int cursorY = 0;
-TCHAR dirList[40][40]; //array of directories
-TCHAR fileList[40][40]; //array of files
+TCHAR dirList[40][60]; //array of directories
+TCHAR fileList[40][60]; //array of files
 int selector = 0;
 FATFS FatFs;
 FIL fil;
@@ -246,7 +259,9 @@ void printString(char * string, int x, int p) {
     y += (10 + 10);
 }
 
-FRESULT scan_files (char* path) {
+FRESULT scan_files (char* path)
+{//populates array with directory
+
     FRESULT res;
     DIR dir;
     UINT i;
@@ -263,8 +278,6 @@ FRESULT scan_files (char* path) {
                 //printString(path,0,100);
                 strcpy(fileList[selector],fno.fname);
                 selector++;
-                //res = scan_files(path);                    /* Enter the directory */
-                //if (res != FR_OK) break;
                 path[i] = 0;
             } else {                                       /* It is a file. */
                 //printString(fno.fname,0,120);
@@ -280,30 +293,12 @@ FRESULT scan_files (char* path) {
 
 int wav_function(char* filename){
 
-           sWavHeader header;
-           FIL f;
-           BYTE buffer[SAMPLES];
-           UINT hs, br, br2;
-           uint32_t fileLength;
-           FATFS FatFs;
-           FRESULT fres;
-
        //    char* filename = "SINE8.WAV";
            f_open(&f, filename, FA_READ);
 
            f_read(&f, &header, sizeof(sWavHeader) ,&hs);
            f_read(&f, &buffer, sizeof(buffer), &br);
            setup(&header, &buffer);
-           while(!f_eof(f)){
-                   if(DMA1->ISR & DMA_ISR_HTIF3){
-                       DMA1->IFCR = DMA_IFCR_CHTIF3;
-                       f_read(&f, &buffer, SAMPLES/2, &br);
-                   }
-                   if(DMA1->ISR & DMA_ISR_TCIF3){
-                       DMA1->IFCR = DMA_IFCR_CTCIF3;
-                       f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
-                   }
-               }
 
            f_close(&f);
 
@@ -315,25 +310,27 @@ void setup(sWavHeader *header, BYTE buffer){
     //timer 6 enable
     RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
 
-    TIM6->PSC = (24)-1;
-    TIM6->ARR = (2000000/(header->SampleRate*header->BitsPerSample)) -1;
-    TIM6->DIER |= TIM_DIER_UDE;
+    TIM6->PSC = 1-1;
+    TIM6->ARR = (48000000/(header->SampleRate)) -1;
+    //TIM6->DIER |= TIM_DIER_UDE;
     TIM6->CR2 |= 0x20;
+    TIM6->CR1 |= TIM_CR1_ARPE;
     TIM6->CR1 |= TIM_CR1_CEN;
 
     //setting up the DMA
     RCC->AHBENR |= RCC_AHBENR_DMA1EN;
     DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel3-> CMAR = (uint32_t)buffer;
+    DMA1_Channel3-> CMAR = (uint32_t)&buffer;
     if(header->BitsPerSample == 8){
-    DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
-    DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
+        DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+        DMA1_Channel3->CNDTR = SAMPLES;
     }
     else{
         DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
         DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
+        DMA1_Channel3->CNDTR = SAMPLES/2;
     }
-    DMA1_Channel3->CNDTR = SAMPLES;
     DMA1_Channel3->CCR |= DMA_CCR_DIR;
     DMA1_Channel3->CCR |= DMA_CCR_MINC;
     DMA1_Channel3->CCR |= DMA_CCR_CIRC;
@@ -343,12 +340,103 @@ void setup(sWavHeader *header, BYTE buffer){
 
     //Set up the DAC
     RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+    DAC->CR &= DAC_CR_EN1;
+    DAC->CR &= ~DAC_CR_TSEL1;
+    DAC->CR |= DAC_CR_DMAEN1;
     DAC->CR |= DAC_CR_TEN1;
     DAC->CR |= DAC_CR_EN1;
 }
-
+void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
+    if(DMA1->ISR & DMA_ISR_HTIF3){
+        DMA1->IFCR = DMA_IFCR_CHTIF3;
+        f_read(&f, &buffer, SAMPLES/2, &br);
+        if(br != SAMPLES/2){
+            finish = 1;
+        }
+        if(header.BitsPerSample == 16){
+            for(int i = 0; i<SAMPLES/2; i++){
+                buffer[i] ^= 0x80;
+            }
+        }
+    }
+    if(DMA1->ISR & DMA_ISR_TCIF3){
+        DMA1->IFCR = DMA_IFCR_CTCIF3;
+        f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
+        if(br != SAMPLES/2){
+                    finish = 1;
+                }
+        if(header.BitsPerSample == 16){
+            for(int i = SAMPLES/2; i<SAMPLES; i++){
+                buffer[i] ^= 0x80;
+            }
+        }
+    }
+    if(finish == 1){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+}
 //#define ZIROFXNS
 #if defined(ZIROFXNS)
+
+//Binding fxns
+void enable_ports(void) { //Emir lab6
+    //initc
+    RCC->AHBENR |= 0x00080000;
+    GPIOC->MODER &= ~0xffff;
+    GPIOC->MODER |= 0x5500;
+    GPIOC->PUPDR &= ~0xff;
+    GPIOC->PUPDR |= 0xaa;
+    RCC->AHBENR |= 0x00040000;
+    GPIOB->MODER &= ~0x3fffff;
+    GPIOB->MODER |= 0x155555;
+}
+
+uint16_t msg[8] = { 0x0000,0x0100,0x0200,0x0300,0x0400,0x0500,0x0600,0x0700 };
+extern const char font[];
+
+void setup_dma(void) { //Emir lab6
+    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+    DMA1_Channel2->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel2->CPAR = (uint32_t) &(GPIOB->ODR);
+    DMA1_Channel2->CMAR = (uint32_t) msg;
+    DMA1_Channel2->CNDTR = 8;
+    DMA1_Channel2->CCR |= DMA_CCR_DIR;
+    DMA1_Channel2->CCR |= DMA_CCR_MINC;
+    DMA1_Channel2->CCR |= DMA_CCR_PSIZE_0;
+    DMA1_Channel2->CCR &= ~DMA_CCR_PSIZE_1;
+    DMA1_Channel2->CCR |= DMA_CCR_MSIZE_0;
+    DMA1_Channel2->CCR &= ~DMA_CCR_MSIZE_1;
+    DMA1_Channel2->CCR |= DMA_CCR_CIRC;
+
+}
+
+void enable_dma(void) {//Emir lab6
+    DMA1_Channel2->CCR |= DMA_CCR_EN;
+}
+
+void init_tim2(void) {
+
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    TIM2->PSC = 4800-1;
+    TIM2->ARR  = 10-1;
+    TIM2->CR1 |= TIM_CR1_CEN;
+    TIM2->DIER |= TIM_DIER_UDE;
+
+}
+
+void append_display(char val) {
+    for(int i = 0; i <8; i++ )
+    {
+           char nchar = msg[i+1];
+           nchar &= ~(0xf00);
+           msg[i] &= ~(0x0ff);
+           msg[i] |=nchar;
+           //drawstring(0,0,0xFFFF,0x0000,)
+    }
+    msg[7] &= ~0xff;
+    msg[7] |= val;
+
+}
 
 int main() {
     init_usart5();
@@ -359,24 +447,55 @@ int main() {
 
     //initialization fxns
     print_pizza();
+    enable_sdcard();
+    int mode = BIND;
 
     //Set up UI
     quickLCDinit();
     quickLCDinit();
     UIInit();
 
+
     int songprog = 0;
     int songdur = 300;
 
+
+
+    fres = f_mount(&FatFs, "", 1);
+    fres = f_getcwd(str, 40);  /* Get current directory path */
+    //printString(str, 0, 0);
+    fres = scan_files(str);
+
     char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
-    //InitBindUI(ninesounds);
-    InitNPUI(ninesounds);
-    NPUIupdate(songdur, songprog,ninesounds);
+    //Binds UI
+    //This one will use cursor and scrolling
+    InitBindUI(fileList);
+    bindupdate(0,0,0);
 
-    //printcommand("drawfillrect 0 0 200 200 f81f");
+    //Binds UI
+    //This one will use cursor and scrolling
+    InitBindUI(fileList);
+    bindupdate(0,0,0);
 
-    //any additional comands can be manually inputted here
+    //NP UI
+   //This one will not use cursor or scrolling
+   //InitNPUI(ninesounds);
+   //NPUIupdate(songdur, songprog,ninesounds);
+
+
     command_shell();
+
+    //Comprehend button presses
+    //if # pressed
+    if (mode == BIND)
+    {
+        mode = PLAY;
+
+    }
+    else
+    {
+        mode = BIND;
+    }
 
 
 }
