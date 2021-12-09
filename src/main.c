@@ -297,7 +297,8 @@ int wav_function(char* filename){
            f_read(&f, &header, sizeof(sWavHeader) ,&hs);
            f_read(&f, &buffer, sizeof(buffer), &br);
            setup(&header, &buffer);
-           while(!f_eof(f)){
+           fileLength = header.Subchunk2Size;
+           for(int x = fileLength; x>SAMPLES/2; x -= SAMPLES){
                    if(DMA1->ISR & DMA_ISR_HTIF3){
                        DMA1->IFCR = DMA_IFCR_CHTIF3;
                        f_read(&f, &buffer, SAMPLES/2, &br);
@@ -318,10 +319,11 @@ void setup(sWavHeader *header, BYTE buffer){
     //timer 6 enable
     RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
 
-    TIM6->PSC = (24)-1;
-    TIM6->ARR = (2000000/(header->SampleRate*header->BitsPerSample)) -1;
-    TIM6->DIER |= TIM_DIER_UDE;
+    TIM6->PSC = 1-1;
+    TIM6->ARR = (48000000/(header->SampleRate)) -1;
+    //TIM6->DIER |= TIM_DIER_UDE;
     TIM6->CR2 |= 0x20;
+    TIM6->CR1 |= TIM_CR1_ARPE;
     TIM6->CR1 |= TIM_CR1_CEN;
 
     //setting up the DMA
@@ -329,14 +331,15 @@ void setup(sWavHeader *header, BYTE buffer){
     DMA1_Channel3->CCR &= ~DMA_CCR_EN;
     DMA1_Channel3-> CMAR = (uint32_t)buffer;
     if(header->BitsPerSample == 8){
-    DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
-    DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
+        DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+        DMA1_Channel3->CNDTR = SAMPLES;
     }
     else{
         DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
         DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
+        DMA1_Channel3->CNDTR = SAMPLES/2;
     }
-    DMA1_Channel3->CNDTR = SAMPLES;
     DMA1_Channel3->CCR |= DMA_CCR_DIR;
     DMA1_Channel3->CCR |= DMA_CCR_MINC;
     DMA1_Channel3->CCR |= DMA_CCR_CIRC;
@@ -346,24 +349,75 @@ void setup(sWavHeader *header, BYTE buffer){
 
     //Set up the DAC
     RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+    DAC->CR &= DAC_CR_EN1;
+    DAC->CR &= ~DAC_CR_TSEL1;
+    DAC->CR |= DAC_CR_DMAEN1;
     DAC->CR |= DAC_CR_TEN1;
     DAC->CR |= DAC_CR_EN1;
 }
 
-#define ZIROFXNS
+//#define ZIROFXNS
 #if defined(ZIROFXNS)
 
 //Binding fxns
-void bindupdate(int goup, int godown, int currloc)
-{
-    //Print the next 9  songs
-    for (int i = 0; i < 10; i++)
-    {
-        drawstring(2,i+4,0x001F,0000,fileList[currloc + i]);
-    }
-    return;
+void enable_ports(void) { //Emir lab6
+    //initc
+    RCC->AHBENR |= 0x00080000;
+    GPIOC->MODER &= ~0xffff;
+    GPIOC->MODER |= 0x5500;
+    GPIOC->PUPDR &= ~0xff;
+    GPIOC->PUPDR |= 0xaa;
+    RCC->AHBENR |= 0x00040000;
+    GPIOB->MODER &= ~0x3fffff;
+    GPIOB->MODER |= 0x155555;
 }
 
+uint16_t msg[8] = { 0x0000,0x0100,0x0200,0x0300,0x0400,0x0500,0x0600,0x0700 };
+extern const char font[];
+
+void setup_dma(void) { //Emir lab6
+    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+    DMA1_Channel2->CCR &= ~DMA_CCR_EN;
+    DMA1_Channel2->CPAR = (uint32_t) &(GPIOB->ODR);
+    DMA1_Channel2->CMAR = (uint32_t) msg;
+    DMA1_Channel2->CNDTR = 8;
+    DMA1_Channel2->CCR |= DMA_CCR_DIR;
+    DMA1_Channel2->CCR |= DMA_CCR_MINC;
+    DMA1_Channel2->CCR |= DMA_CCR_PSIZE_0;
+    DMA1_Channel2->CCR &= ~DMA_CCR_PSIZE_1;
+    DMA1_Channel2->CCR |= DMA_CCR_MSIZE_0;
+    DMA1_Channel2->CCR &= ~DMA_CCR_MSIZE_1;
+    DMA1_Channel2->CCR |= DMA_CCR_CIRC;
+
+}
+
+void enable_dma(void) {//Emir lab6
+    DMA1_Channel2->CCR |= DMA_CCR_EN;
+}
+
+void init_tim2(void) {
+
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    TIM2->PSC = 4800-1;
+    TIM2->ARR  = 10-1;
+    TIM2->CR1 |= TIM_CR1_CEN;
+    TIM2->DIER |= TIM_DIER_UDE;
+
+}
+
+void append_display(char val) {
+    for(int i = 0; i <8; i++ )
+    {
+           char nchar = msg[i+1];
+           nchar &= ~(0xf00);
+           msg[i] &= ~(0x0ff);
+           msg[i] |=nchar;
+           //drawstring(0,0,0xFFFF,0x0000,)
+    }
+    msg[7] &= ~0xff;
+    msg[7] |= val;
+
+}
 
 int main() {
     init_usart5();
@@ -429,7 +483,7 @@ int main() {
 
 #endif
 
-//#define Daniel
+#define Daniel
 #if defined(Daniel)
 
 int main() {
@@ -458,7 +512,7 @@ int main() {
     else {
         printString("SD Card Mounted", 0, 40);
     }
-
+    wav_function("sine8.wav");
 
     fres = f_getcwd(str, 40);  /* Get current directory path */
     printString(str, 0, 0);
