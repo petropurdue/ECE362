@@ -208,12 +208,12 @@ void init_keyPad() { // uses ABCD
     RCC -> AHBENR |= RCC_AHBENR_GPIOCEN;
     GPIOC -> MODER &= ~0xffff;
     GPIOC -> MODER |= 0x5500;
-    GPIOC -> ODR |= 0x10;
+    GPIOC -> ODR |= 0x10; //responsible for the general purpose output
     GPIOC -> PUPDR &= ~0xff;
     GPIOC -> PUPDR |= 0xaa;
 }
 
-void printCurrDir() {
+void printCurrDir() { //check here for cutoff(?)
     LCD_Clear(BLACK);
     fres = f_getcwd(str, 40);  /* Get current directory path */
     y = 0;
@@ -223,10 +223,11 @@ void printCurrDir() {
 }
 
 void printFileList() { // CHANGE SO SELECTOR DOES NOT GO OUT OF BOUNDS
+    //check here for cutoff(?)
     y = 40;
     printCursor((selector + 2) * 20);
     for(int i = 0; i < 40; i++) {
-        printString(fileList[i],0,0);
+        printString(fileList[i], 0, 0);
     }
 }
 
@@ -237,28 +238,26 @@ void emptyFileList() {
 }
 
 void printCursor(int a) {
-    //change color to whatever!!
-     LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, RED);
+    //change color to whatever!! 
+     LCD_DrawFillRectangle(0, (a + 0), 10, (a + 20), RED);
 }
 
-void printString(char * string, int x, int p) {
-    //int y = 100;
-    //int x = 0;
-    int checker = 0;
-    for(int i = checker; string[i] != '\0'; i++) {
-        LCD_DrawChar((x * 10) + (10 + 10), y, WHITE, BLACK, string[i], (4 * 4), 1);
+void printString(char * str, int x, int pp) { //check here for cutoff
 
-    if (200 <= (10 * x)) {
-        x = (0 - 1);
-        y += 20;
-    }
+    int checker = 0;
+    for(int i = checker; str[i] != '\0'; i++) {
+        LCD_DrawChar((x * 10) + (10 + 10), y, WHITE, BLACK, str[i], (4 * 4), 1);
+
+        if (200 <= (10 * x)) {
+            x = (0 - 1);
+            y += 20;
+        }
         x += 1;
     }
     y += (10 + 10);
 }
 
-FRESULT scan_files (char* path)
-{//populates array with directory
+FRESULT scan_files (char* path) { //populates array with directory
 
     FRESULT res;
     DIR dir;
