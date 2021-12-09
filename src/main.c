@@ -71,7 +71,10 @@ void init_usart5()//Emir Lab10
     USART5 -> CR1 &= ~USART_CR1_PCE; //no parity
     USART5 -> CR1 &= ~USART_CR1_OVER8; //oversampling 16x
     USART5->BRR |= 0x1A1;//baud rate to 115.kBaud
-    USART5->CR1 |= USART_CR1_RE;
+    USART5->CR1 |= USART_CR1_RE;void strappend(char* string){
+    strcat(strdest, "/");
+    strcat(strdest, string);
+}
     USART5->CR1 |= USART_CR1_TE;
     USART5 -> CR1 |= USART_CR1_UE;
     while(!(USART5->ISR & USART_ISR_TEACK)&&(USART5->ISR &USART_ISR_REACK));
@@ -418,7 +421,6 @@ void push_queue(int n) {
     queue[qin] = n;
     qin ^= 1;
 }
-
 uint8_t pop_queue() {
     uint8_t tmp = queue[qout] & 0x7f;
     queue[qout] = 0;
@@ -678,6 +680,11 @@ int keyinput(char key,int mode)
         }
         return PLAY;
     }
+}
+
+void strappend(char* string){
+    strcat(strdest, "/");
+    strcat(strdest, string);
 }
 
 #define ZIROFXNS
