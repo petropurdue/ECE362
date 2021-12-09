@@ -30,7 +30,8 @@ FIL f;
 BYTE buffer[SAMPLES];
 uint16_t buffer16[SAMPLES/2];
 UINT hs, br, br2;
-uint32_t fileLength;
+uint32_t list;
+int channels = 1;
 FRESULT fres;
 int finish = 0;
 
@@ -296,6 +297,23 @@ int wav_function(char* filename){
    f_open(&f, filename, FA_READ);
 
    f_read(&f, &header, sizeof(sWavHeader) ,&hs);
+
+   //list chunk check
+   if(header.Subchunk2ID != 0x61746164){ //check to make sure that it is data next
+       fres = f_lseek(&f, f_tell(&f) - 8); //go back to subchunk2id
+       f_read(&f, &list, sizeof(uint32_t), &hs);//read subchunk2id
+       while(list != 0x61746164){//while subchunk id not 'data'
+           f_read(&f, &list, 4, &hs); //read subchunk size
+           f_lseek(&f, f_tell(&f) + list); //skip to end of data
+           f_read(&f, &list, sizeof(uint32_t), &hs); //read new subchunk id
+       }
+       header.Subchunk2ID = list; //make subchunk 'data'
+       f_read(&f, &header.Subchunk2Size, sizeof(uint32_t), &hs); //'data' size
+   }
+
+   //check number of channels
+   channels = header.NumChannels;
+
    f_read(&f, &buffer, sizeof(buffer), &br);
    setup();
 
@@ -309,7 +327,7 @@ void setup(){
     RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
 
     TIM6->PSC = 1-1;
-    TIM6->ARR = (48000000/(header.SampleRate)) -1;
+    TIM6->ARR = (48000000/(header.SampleRate * channels)) -1;
     //TIM6->DIER |= TIM_DIER_UDE;
     TIM6->CR2 |= 0x20;
     //TIM6->CR1 |= TIM_CR1_ARPE;
@@ -550,7 +568,7 @@ int main() {
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
     GPIOA -> MODER |= GPIO_MODER_MODER4;
 
-    wav_function("NGGYU.wav");
+    wav_function("NGGYU2.wav");
     while(1);
 //    f_close(&f);
 
