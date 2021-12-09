@@ -5,5 +5,4 @@ Lab11
 4) Label the functions you're working on and what they're for. Ex:
   void init_spi1_slow() //ZP SPI SD card reader
   
-  
-  EDIT: I gotten git working. Use terminal and standard git commands. Make sure you're pulling and committing to master branch.
+ 
