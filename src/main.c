@@ -74,7 +74,18 @@ int finish = 0;
 int fileLen;
 
 
+
 //Emir and Seth wav fxns
+void pause(){
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    DAC->CR &= ~DAC_CR_EN1;
+}
+
+void restart(){
+    DMA1_Channel3->CCR |= DMA_CCR_EN;
+
+}
+
 int wav_function(char* filename){
 //    char* filename = "SINE8.WAV";
    f_open(&f, filename, FA_READ);
@@ -151,7 +162,7 @@ void wav_setup(){
 void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
     ////////////new//////
     if(f_eof(f)){
-        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+        pause();
     }
     ///////////////////
     if(DMA1->ISR & DMA_ISR_HTIF3){
@@ -200,6 +211,23 @@ void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
         DMA1_Channel3->CCR &= ~DMA_CCR_EN;
     }
     currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
+    NPUIupdate(fileLen,currentSec);
+}
+
+void PC()
+{
+    pause();
+    f_close(&f);
+}
+
+//Rick FXN. Thanks, dad!
+//============================================================================
+// Wait for n nanoseconds. (Maximum: 4.294 seconds)
+//============================================================================
+static inline void nano_wait(unsigned int n) {
+    asm(    "        mov r0,%0\n"
+            "repeat: sub r0,#83\n"
+            "        bgt repeat\n" : : "r"(n) : "r0", "cc");
 }
 
 //Lab 10 Fxns
@@ -607,6 +635,7 @@ void clearsongsBIND()
 
 void testVI() //test if last character is VI. I made this function 30 seconds ago and I have no clue why I named it what i did.
 {
+    printf("\ntestVI");
     int w;
     for (w = 0; strdest[w]; w++)
     {
@@ -622,15 +651,19 @@ void testVI() //test if last character is VI. I made this function 30 seconds ag
         while(1)
         {
             drawstring(0,3,0xF81F,0,"<(o.o<)");
-            //usleep(500);
+            nano_wait(100000000);
             drawstring(0,3,0xF81F,0,"\\(o.o\\)");
             //usleep(500);
+            nano_wait(100000000);
             drawstring(0,3,0xF81F,0,"(^o.o^)");
             //usleep(500);
+            nano_wait(100000000);
             drawstring(0,3,0xF81F,0,"(/o.o)/");
             //usleep(500);
+            nano_wait(100000000);
             drawstring(0,3,0xF81F,0,"(>o.o)>");
             //usleep(500);
+            nano_wait(100000000);
         }
     }
 }
@@ -640,7 +673,7 @@ void InitNPUI() //zp UI initialization
     LCD_DrawString(0, 0, 0xF800, 0000, "Epic ECE362 .wav Player" , 16, 0);
     LCD_DrawString(0, 16, 0xF800, 0000, "Now Playing" , 16, 0);
     drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
-    drawstring(0, 3, 0xFFFF, 0000, "%songname%");
+    //drawstring(0, 3, 0xFFFF, 0000, "%songname%");
     drawstring(0, 4, 0xFFFF, 0000, "Song Progress:      /");
 
     //Song binds UI:
@@ -692,6 +725,8 @@ int keyinput(char key,int mode)
 
     if (key == '#')
     {//switch modes
+        pause();
+        f_close(&f);
         if (mode == BIND)
         {
             mode = PLAY;
@@ -757,7 +792,7 @@ int keyinput(char key,int mode)
             strappend(fileList[selector]);
             strcpy(bind1, strdest);
 
-            //testVI();
+            testVI();
             clearstrdest();
             //drawstring(0,0,0xffff,0,bind1);
 
@@ -861,43 +896,53 @@ int keyinput(char key,int mode)
         }
         if (key == '1')
         {
+            PC();
             int i = wav_function(bind1);
         }
         if (key == '2')
         {
-
+            PC();
+            int i = wav_function(bind2);
         }
         if (key == '3')
         {
-
+            PC();
+            int i = wav_function(bind3);
         }
         if (key == '4')
         {
-
+            PC();
+            int i = wav_function(bind4);
         }
         if (key == '5')
         {
-
+            PC();
+            int i = wav_function(bind5);
         }
         if (key == '6')
         {
-
+            PC();
+            int i = wav_function(bind6);
         }
         if (key == '7')
         {
-
+            PC();
+            int i = wav_function(bind7);
         }
         if (key == '8')
         {
-
+            PC();
+            int i = wav_function(bind8);
         }
         if (key == '9')
         {
-
+            PC();
+            int i = wav_function(bind9);
         }
         if (key == '0')
         {
-
+            PC();
+            int i = wav_function(bind0);
         }
         return PLAY;
     }
