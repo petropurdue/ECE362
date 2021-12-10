@@ -17,7 +17,7 @@ void quickLCDinit(void);
 void UIInit(void);
 void writecommand(char * inputarr);
 void InitBindUI(char ninesounds[10][60]) ;
-void InitNPUI(char boundsounds[10][60]);
-void NPUIupdate(int songdur,int songprog,char boundsounds[10][60]);
+void drawfolder(char * foldername);
+void NPUIupdate(int songdur,int songprog);
 
 #endif /* __COMMANDS_H_ */

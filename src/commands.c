@@ -458,44 +458,15 @@ void InitBindUI(char ninesounds[10][60]) //zp UI initialization
 
     drawstring(0,14,0xF800,0000,"------------------------------");
     drawstring(0,15,0X07FF,0000,"Controls:");
-    drawstring(0,16,0X07FF,0000,"A: Cursor Up   B: Cursor Down");
-    drawstring(0,17,0X07FF,0000,"C: Enter Dir.  D: Exit Dir.");
-    drawstring(0,18,0x07FF,0000,"Press 1-9 to bind to the");
+    drawstring(0,16,0X07FF,0000,"A: Cursor Up   B: Enter Dir.");
+    drawstring(0,17,0X07FF,0000,"C: Cursor Down D: Exit Dir.");
+    drawstring(0,18,0x07FF,0000,"Press 0-9 to bind to the");
     drawstring(0,19,0x07FF,0000,"selected sound");
 }
 
-void InitNPUI(char boundsounds[10][60]) //zp UI initialization
-{
-    LCD_DrawString(0, 0, 0xF800, 0000, "Epic ECE362 .wav Player" , 16, 0);
-    LCD_DrawString(0, 16, 0xF800, 0000, "Now Playing" , 16, 0);
-    drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
-    drawstring(0, 3, 0xFFFF, 0000, "%songname%");
-    drawstring(0, 4, 0xFFFF, 0000, "Song Progress:      /");
 
-    //Song binds UI:
-    drawstring(0, 6, 0xFFFF, 0000, "0:");
-    drawstring(0, 7, 0xFFFF, 0000, "1:");
-    drawstring(0, 8, 0xFFFF, 0000, "2:");
-    drawstring(0, 9, 0xFFFF, 0000, "3:");
-    drawstring(0, 10, 0xFFFF, 0000, "4:");
-    drawstring(0, 11, 0xFFFF, 0000, "5:");
-    drawstring(0, 12, 0xFFFF, 0000, "6:");
-    drawstring(0, 13, 0xFFFF, 0000, "7:");
-    drawstring(0, 14, 0xFFFF, 0000, "8:");
-    drawstring(0, 15, 0xFFFF, 0000, "9:");
 
-    //Bound songs list
-    for (int i = 6; i < 6+10; i++)
-    {
-        drawstring(2,i,0x001F,0000,boundsounds[i-6]);
-    }
-    //Bottom UI
-    drawstring(0,16,0xF800,0000,"------------------------------");
-    drawstring(0,17,0x07FF,0000,"Press 1-9 to play the bound");
-    drawstring(0,18,0x07FF,0000,"sounds");
-}
-
-void NPUIupdate(int songdur,int songprog,char boundsounds[10][60])
+void NPUIupdate(int songdur,int songprog)
 {
     //Song slider calculations
     double percent = (double)songprog / (double)songdur;
