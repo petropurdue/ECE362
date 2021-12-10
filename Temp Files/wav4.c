@@ -23,6 +23,41 @@
 char serfifo[FIFOSIZE];
 int seroffset = 0;
 int binds[9];
+int cursorpos = 0;
+
+//Bind globals
+char bind0[60];
+char bind1[60];
+char bind2[60];
+char bind3[60];
+char bind4[60];
+char bind5[60];
+char bind6[60];
+char bind7[60];
+char bind8[60];
+char bind9[60];
+char intaddy[60];
+char strdest[60];
+
+//Keypad necessities
+const char keymap[] = "DCBA#9630852*741";
+uint8_t hist[16];
+uint8_t col;
+char queue[2];
+int qin;
+int qout;
+
+//Daniel Initializations
+int y = 0;
+int cursorY = 0;
+TCHAR dirList[40][60]; //array of directories
+TCHAR fileList[40][60]; //array of files
+int selector = 0;
+FATFS FatFs;
+FIL fil;
+FRESULT fres;
+TCHAR str[40];
+DIR currDir;
 
 //wav initializations
 sWavHeader header;
@@ -37,20 +72,8 @@ int currentPos = 0;
 int currentSec = 0;
 int finish = 0;
 int fileLen;
-char* strdest = "";
 
 
-//Daniel Initializations
-int y = 0;
-int cursorY = 0;
-TCHAR dirList[40][60]; //array of directories
-TCHAR fileList[40][60]; //array of files
-int selector = 0;
-FATFS FatFs;
-FIL fil;
-FRESULT fres;
-TCHAR str[40];
-DIR currDir;
 
 //Lab 10 Fxns
 void init_usart5()//Emir Lab10
@@ -264,6 +287,8 @@ void printString(char * string, int x, int p) {
     y += (10 + 10);
 }
 
+static FILINFO fon;
+
 FRESULT scan_files (char* path)
 {//populates array with directory
 
@@ -272,7 +297,7 @@ FRESULT scan_files (char* path)
     UINT i;
     static FILINFO fno;
     selector = 0;
-    res = f_opendir(&dir, path);                       /* headerOpen the directory */
+    res = f_opendir(&dir, path);                       /* Open the directory */
     if (res == FR_OK) {
         for (;;) {
             res = f_readdir(&dir, &fno);                   /* Read a directory item */
@@ -296,6 +321,442 @@ FRESULT scan_files (char* path)
     return res;
 }
 
+//Keypad Fxns (Emir Lab 6)
+void enable_ports(void) { //Emir lab6
+    //initc
+    RCC->AHBENR |= 0x00080000;
+    GPIOC->MODER &= ~0xffff;
+    GPIOC->MODER |= 0x5500;
+    GPIOC->PUPDR &= ~0xff;
+    GPIOC->PUPDR |= 0xaa;
+    RCC->AHBENR |= 0x00040000;
+    //GPIOB->MODER &= ~0x3fffff;
+    //GPIOB->MODER |= 0x155555;
+}
+
+uint16_t msg[8] = { 0x0000,0x0100,0x0200,0x0300,0x0400,0x0500,0x0600,0x0700 };
+
+void init_tim2(void) {
+
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    TIM2->PSC = 4800-1;
+    TIM2->ARR  = 10-1;
+    TIM2->CR1 |= TIM_CR1_CEN;
+    TIM2->DIER |= TIM_DIER_UDE;
+
+}
+
+void append_display(char val) {
+    for(int i = 0; i <8; i++ )
+    {
+           char nchar = msg[i+1];
+           nchar &= ~(0xf00);
+           msg[i] &= ~(0x0ff);
+           msg[i] |=nchar;
+
+    }
+    msg[7] &= ~0xff;
+    msg[7] |= val;
+
+}
+
+void drive_column(int c)
+{
+    GPIOC->BSRR = 0xf00000 | (1 << (c + 4));
+}
+
+int read_rows()
+{
+    return GPIOC->IDR & 0xf;
+}
+
+void push_queue(int n) {
+    n = (n & 0xff) | 0x80;
+    queue[qin] = n;
+    qin ^= 1;
+}
+
+uint8_t pop_queue() {
+    uint8_t tmp = queue[qout] & 0x7f;
+    queue[qout] = 0;
+    qout ^= 1;
+    return tmp;
+}
+
+void update_history(int c, int rows)
+{
+    for(int i = 0; i < 4; i++) {
+        hist[4*c+i] = (hist[4*c+i]<<1) + ((rows>>i)&1);
+        if (hist[4*c+i] == 1)
+          push_queue(4*c+i);
+    }
+}
+
+void init_tim6() {
+    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
+    TIM6->PSC = 48 - 1;
+    TIM6->ARR = 1000 - 1;
+    TIM6->DIER |= TIM_DIER_UIE;
+    TIM6->CR1 |= TIM_CR1_CEN;
+    NVIC->ISER[0] |= 1 << TIM6_DAC_IRQn;
+}
+
+void TIM6_DAC_IRQHandler(void) {
+    TIM6->SR &= ~TIM_SR_UIF;
+    int rows = read_rows();
+    update_history(col, rows);
+    col = (col + 1) & 3;
+    drive_column(col);
+}
+
+char get_keypress() {
+    for(;;) {
+        asm volatile ("wfi" : :);   // wait for an interrupt
+        if (queue[qout] == 0)
+            continue;
+        return keymap[pop_queue()];
+    }
+    return -1;
+}
+
+void setupkeypad()
+{
+    enable_ports();
+    init_tim2();
+    init_tim6();
+    return;
+}
+
+void strappend(char* string)
+{//Emir+Seth magic fxn
+    strcat(strdest, "/");
+    strcat(strdest, string);
+}
+
+void clearstrdest()
+{
+    memset(strdest,0,60);
+}
+
+//ZP Song Display and Binding Fxns
+void rendercursor(void)
+{
+    //account for out of bounds
+    if (cursorpos < 0)
+    {
+        cursorpos = 9;
+        clearsongsBIND();
+        drawstring(1, 4, 0xFFFF, 0000, " ");
+        drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
+    }
+    else if (cursorpos > 9)
+    {
+        clearsongsBIND();
+        cursorpos = 0;
+        drawstring(1, 13, 0xFFFF, 0000, " ");
+        drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
+    }
+    else
+    {
+        drawstring(1, cursorpos+3, 0xFFFF, 0000, " ");
+        drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
+        if (cursorpos !=9)
+            drawstring(1, cursorpos+5, 0xFFFF, 0000, " ");
+    }
+}
+
+void dispsongsBM(int offset)
+{
+    //Bound songs list
+    offset*=10;
+    for (int i = 0; i < 10; i++)
+    {
+        drawstring(2,i+4,0x001F,0000,fileList[i+offset]);
+    }
+}
+
+void resetcursor()
+{
+    cursorpos = 0;
+    for(int i = 5; i < 14; i++)
+    {
+        drawstring(1,i,0xffff,0,"                    ");
+    }
+    rendercursor();
+}
+
+void clearscreen()
+{
+    UIInit();
+    //because fuck you, that's why.
+}
+
+void clearsongsBIND(void)
+{
+    for (int i = 4; i <14; i++)
+    {
+        drawstring(2,i,0xffff,0,"             ");
+    }
+}
+
+void InitNPUI() //zp UI initialization
+{
+    LCD_DrawString(0, 0, 0xF800, 0000, "Epic ECE362 .wav Player" , 16, 0);
+    LCD_DrawString(0, 16, 0xF800, 0000, "Now Playing" , 16, 0);
+    drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
+    drawstring(0, 3, 0xFFFF, 0000, "%songname%");
+    drawstring(0, 4, 0xFFFF, 0000, "Song Progress:      /");
+
+    //Song binds UI:
+    drawstring(0, 6, 0xFFFF, 0000, "0:");
+    drawstring(0, 7, 0xFFFF, 0000, "1:");
+    drawstring(0, 8, 0xFFFF, 0000, "2:");
+    drawstring(0, 9, 0xFFFF, 0000, "3:");
+    drawstring(0, 10, 0xFFFF, 0000, "4:");
+    drawstring(0, 11, 0xFFFF, 0000, "5:");
+    drawstring(0, 12, 0xFFFF, 0000, "6:");
+    drawstring(0, 13, 0xFFFF, 0000, "7:");
+    drawstring(0, 14, 0xFFFF, 0000, "8:");
+    drawstring(0, 15, 0xFFFF, 0000, "9:");
+
+    //Bound songs list
+
+    drawstring(2,6,0x001F,0000,bind0);
+    drawstring(2,6,0x001F,0000,bind1);
+    drawstring(2,6,0x001F,0000,bind2);
+    drawstring(2,6,0x001F,0000,bind3);
+    drawstring(2,6,0x001F,0000,bind4);
+    drawstring(2,6,0x001F,0000,bind5);
+    drawstring(2,6,0x001F,0000,bind6);
+    drawstring(2,6,0x001F,0000,bind7);
+    drawstring(2,6,0x001F,0000,bind8);
+    drawstring(2,6,0x001F,0000,bind9);
+
+    //Bottom UI
+    drawstring(0,16,0xF800,0000,"------------------------------");
+    drawstring(0,17,0x07FF,0000,"Press 1-9 to play the bound");
+    drawstring(0,18,0x07FF,0000,"sounds");
+}
+
+int keyinput(char key,int mode)
+{//whenever a key is inputted, it will read this. This is like a brain function :)
+    printf("%c",key);
+
+    if (key == '#')
+    {//switch modes
+        pause();
+        f_close(&f);
+        if (mode == BIND)
+        {
+            mode = PLAY;
+            clearscreen();
+            InitNPUI();
+            return PLAY;
+
+        }
+        else
+        {
+            mode = BIND;
+            clearscreen();
+            InitBindUI(fileList);
+            dispsongsBM(0);
+            //UI bundle
+            drawfolder(str);
+            resetcursor();
+            selector = 0;
+            dispsongsBM(selector / 10);
+            return BIND;
+        }
+    }
+    if (mode == BIND)
+    {
+        if (key == 'A')
+        {//Up
+            cursorpos--;
+            selector--;
+            rendercursor();
+            //clearsongsBIND();
+        }
+        if (key == 'B')
+        {// >>
+            //drawstring(0,0,0xffff,0,fileList[selector]);
+            strappend(fileList[selector]);
+            fres = f_chdir(fileList[selector]);
+            fres = f_getcwd(str, 40);  /* Get current directory path */
+            y = 0;
+            drawfolder(str);
+            emptyFileList();
+            fres = scan_files(str);
+            resetcursor();
+            selector = 0;
+        }
+        if (key == 'C')
+        {//Down
+            cursorpos++;
+            selector++;
+            //clearsongsBIND();
+            rendercursor();
+
+        }
+        if (key == 'D')
+        {// ..
+            /*
+            fres = f_chdir("..");
+            fres = f_getcwd(str, 40);
+            emptyFileList();
+            fres = scan_files(str);
+            selector = 0;
+            drawfolder("         ");
+            drawfolder(str);
+            resetcursor();
+            */
+            clearstrdest();
+            //Turbo D
+            fres = f_chdir("/");
+            fres = f_getcwd(str, 40);  /* Get current directory path */
+            emptyFileList();
+            fres = scan_files(str);
+            selector = 0;
+            drawfolder("         ");
+            drawfolder(str);
+            resetcursor();
+        }
+        if (key == '1')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind1, strdest);
+            drawstring(0,0,0xffff,0,bind1);
+            clearstrdest();
+
+            //Turbo D
+            fres = f_chdir("/");
+            fres = f_getcwd(str, 40);  /* Get current directory path */
+            emptyFileList();
+            fres = scan_files(str);
+            selector = 0;
+            drawfolder("         ");
+            drawfolder(str);
+            resetcursor();
+        }
+        if (key == '2')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind2, strdest);
+        }
+        if (key == '3')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind3, strdest);
+        }
+        if (key == '4')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind4, strdest);
+        }
+        if (key == '5')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind5, strdest);
+        }
+        if (key == '6')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind6, strdest);
+        }
+        if (key == '7')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind7, strdest);
+        }
+        if (key == '8')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind8, strdest);
+        }
+        if (key == '9')
+        {
+            strappend(fileList[selector]);
+            strcpy(bind9, strdest);
+        }
+        if (key == '0')
+        {
+            //strcpy(bind0, intaddy);
+            for (int i = 0; intaddy[i] != -666; i++)
+            {
+                printf("%d ",intaddy[i]);
+            }
+        }
+
+        dispsongsBM(selector / 10);
+        return BIND;
+    }
+    else //mode == PLAY
+    {
+        if (key == 'A')
+        {
+
+        }
+        if (key == 'B')
+        {
+
+        }
+        if (key == 'C')
+        {
+
+        }
+        if (key == 'D')
+        {
+
+        }
+        if (key == '1')
+        {
+            pause();
+            f_close(&f);
+            wav_function(bind1);
+            //f_close(&f);
+        }
+        if (key == '2')
+        {
+
+        }
+        if (key == '3')
+        {
+
+        }
+        if (key == '4')
+        {
+
+        }
+        if (key == '5')
+        {
+
+        }
+        if (key == '6')
+        {
+
+        }
+        if (key == '7')
+        {
+
+        }
+        if (key == '8')
+        {
+
+        }
+        if (key == '9')
+        {
+
+        }
+        if (key == '0')
+        {
+
+        }
+        return PLAY;
+    }
+}
+
+
+//Emir and Seth wav fxns
 int wav_function(char* filename){
 //    char* filename = "SINE8.WAV";
    f_open(&f, filename, FA_READ);
@@ -320,14 +781,14 @@ int wav_function(char* filename){
    fileLen = header.Subchunk2Size * 8 / header.BitsPerSample / header.SampleRate;
 
    f_read(&f, &buffer, sizeof(buffer), &br);
-   setup();
+   wav_setup();
 
 //           f_close(&f);
 
    return 0;
 }
 
-void setup(){
+void wav_setup(){
     //timer 6 enable
     RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
 
@@ -368,10 +829,22 @@ void setup(){
     DAC->CR |= DAC_CR_TEN1;
     DAC->CR |= DAC_CR_EN1;
 }
+
+void pause(){
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    DAC->CR &= ~DAC_CR_EN1;
+}
+void restart(){
+    DMA1_Channel3->CCR |= DMA_CCR_EN;
+
+}
+
 void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
     ////////////new//////
     if(f_eof(f)){
         DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+        DAC->CR &= ~DAC_CR_EN1;
+
     }
     ///////////////////
     if(DMA1->ISR & DMA_ISR_HTIF3){
@@ -416,237 +889,55 @@ void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
             }
         }currentPos += SAMPLES/2;
     }
-    if(finish == 1){
-        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    }
     currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
 }
 
-void strappend(char* string){
-    strcat(strdest, "/");
-    strcat(strdest, string);
-}
-//#define ZIROFXNS
+#define ZIROFXNS
 #if defined(ZIROFXNS)
-
-//Binding fxns
-void enable_ports(void) { //Emir lab6
-    //initc
-    RCC->AHBENR |= 0x00080000;
-    GPIOC->MODER &= ~0xffff;
-    GPIOC->MODER |= 0x5500;
-    GPIOC->PUPDR &= ~0xff;
-    GPIOC->PUPDR |= 0xaa;
-    RCC->AHBENR |= 0x00040000;
-    GPIOB->MODER &= ~0x3fffff;
-    GPIOB->MODER |= 0x155555;
-}
-
-uint16_t msg[8] = { 0x0000,0x0100,0x0200,0x0300,0x0400,0x0500,0x0600,0x0700 };
-extern const char font[];
-
-void setup_dma(void) { //Emir lab6
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-    DMA1_Channel2->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel2->CPAR = (uint32_t) &(GPIOB->ODR);
-    DMA1_Channel2->CMAR = (uint32_t) msg;
-    DMA1_Channel2->CNDTR = 8;
-    DMA1_Channel2->CCR |= DMA_CCR_DIR;
-    DMA1_Channel2->CCR |= DMA_CCR_MINC;
-    DMA1_Channel2->CCR |= DMA_CCR_PSIZE_0;
-    DMA1_Channel2->CCR &= ~DMA_CCR_PSIZE_1;
-    DMA1_Channel2->CCR |= DMA_CCR_MSIZE_0;
-    DMA1_Channel2->CCR &= ~DMA_CCR_MSIZE_1;
-    DMA1_Channel2->CCR |= DMA_CCR_CIRC;
-
-}
-
-void enable_dma(void) {//Emir lab6
-    DMA1_Channel2->CCR |= DMA_CCR_EN;
-}
-
-void init_tim2(void) {
-
-    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-    TIM2->PSC = 4800-1;
-    TIM2->ARR  = 10-1;
-    TIM2->CR1 |= TIM_CR1_CEN;
-    TIM2->DIER |= TIM_DIER_UDE;
-
-}
-
-void append_display(char val) {
-    for(int i = 0; i <8; i++ )
-    {
-           char nchar = msg[i+1];
-           nchar &= ~(0xf00);
-           msg[i] &= ~(0x0ff);
-           msg[i] |=nchar;
-           //drawstring(0,0,0xFFFF,0x0000,)
-    }
-    msg[7] &= ~0xff;
-    msg[7] |= val;
-
-}
-
 int main() {
     init_usart5();
     enable_tty_interrupt();
     setbuf(stdin,0);
     setbuf(stdout,0);
     setbuf(stderr,0);
-
+    //printf("holasd");
     //initialization fxns
     print_pizza();
     enable_sdcard();
     int mode = BIND;
+    setupkeypad();
+    cursorpos = 0;
+    //rendercursor();
 
     //Set up UI
     quickLCDinit();
     quickLCDinit();
     UIInit();
-
-
-    int songprog = 0;
-    int songdur = 300;
-
-
+    rendercursor();
 
     fres = f_mount(&FatFs, "", 1);
     fres = f_getcwd(str, 40);  /* Get current directory path */
-    //printString(str, 0, 0);
+    printString(str, 0, 0);
     fres = scan_files(str);
 
-    char ninesounds[10][60] = {"Java", "Python", "C++", "HTML", "SQL","one","wto","three","four","END"};
     //Binds UI
     //This one will use cursor and scrolling
     InitBindUI(fileList);
-    bindupdate(0,0,0);
+    dispsongsBM(0);
 
-    //Binds UI
-    //This one will use cursor and scrolling
-    InitBindUI(fileList);
-    bindupdate(0,0,0);
 
     //NP UI
    //This one will not use cursor or scrolling
-   //InitNPUI(ninesounds);
    //NPUIupdate(songdur, songprog,ninesounds);
 
+    //command_shell();
 
-    command_shell();
-
-    //Comprehend button presses
-    //if # pressed
-    if (mode == BIND)
+    for(;;)
     {
-        mode = PLAY;
-
-    }
-    else
-    {
-        mode = BIND;
+        char key = get_keypress();
+        mode = keyinput(key,mode);
     }
 
 
 }
-
-#endif
-
-#define Daniel
-#if defined(Daniel)
-
-int main() {
-
-    //init_usart5();
-    //init_keyPad();
-    enable_tty_interrupt();
-    setbuf(stdin,0);
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-
-    //initialization fxns
-    //print_pizza();
-    quickLCDinit();
-    quickLCDinit();
-    LCD_Clear(BLACK);
-    //printString("hahahahaha gay gay gay", 0, 0);
-
-    //enable_sdcard();
-    FATFS *fs = &FatFs;
-    fres = f_mount(fs, "", 1);
-
-    if (fres != FR_OK) {
-        printString("SD Card did not mount", 0, 20);
-    }
-    else {
-        printString("SD Card Mounted", 0, 40);
-    }
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
-    GPIOA -> MODER |= GPIO_MODER_MODER4;
-//    f_opendir(&dir, "/new_fo~1");
-    wav_function("moon.wav");
-    while(currentPos != fileLen);
-//    f_close(&f);
-
-    fres = f_getcwd(str, 40);  /* Get current directory path */
-    printString(str, 0, 0);
-    fres = scan_files(str);
-    printFileList();
-    int oldvalue = 0;
-    for(;;) { // this is bad, should implement external interrupt
-        if(((GPIOC->IDR & 0x2) != 0)) { // move down dir (keypad C)
-            if(oldvalue == 0) {
-                selector++;
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        else if(((GPIOC->IDR & 0x8) != 0)) { // move up dir (keypad A)
-            if(oldvalue == 0) {
-                selector--;
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        // IN THIS ELSE IF RIGHT BELOW THIS IS WHERE TO IMPLEMENT MUSIC PLAYING...
-        // AN IF STATEMENT NEEDS TO CHECK IF FILELIST[SELECTOR] IS A FILE OR FOLDER
-        // IF ITS A FILE PLAY IT, IF ITS A FOLDER, MOVE INTO IT WHICH IT ALREADY DOES
-        else if(((GPIOC->IDR & 0x4) != 0) && selector >= 0) { // enter dir (keypad B)
-            if(oldvalue == 0) {
-                y = 0;
-                LCD_Clear(BLACK);
-                fres = f_chdir(fileList[selector]);
-                fres = f_getcwd(str, 40);  /* Get current directory path */
-                y = 0;
-                printString(str, 0, 0);
-                emptyFileList();
-                fres = scan_files(str);
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        else if(((GPIOC->IDR & 0x1) != 0)) { // prev dir (keypad D)
-            if(oldvalue == 0) {
-                y = 0;
-                LCD_Clear(BLACK);
-                fres = f_chdir("..");
-                fres = f_getcwd(str, 40);  /* Get current directory path */
-                y = 0;
-                printString(str, 0, 0);
-                emptyFileList();
-                fres = scan_files(str);
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        else {
-            oldvalue = 0;
-        }
-
-    }
-
-
-}
-
 #endif
