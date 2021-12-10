@@ -28,11 +28,16 @@ int binds[9];
 sWavHeader header;
 FIL f;
 BYTE buffer[SAMPLES];
+uint16_t buffer16[SAMPLES/2];
 UINT hs, br, br2;
-uint32_t fileLength;
-FATFS FatFs;
+uint32_t list;
+int channels = 1;
 FRESULT fres;
+int currentPos = 0;
+int currentSec = 0;
 int finish = 0;
+int fileLen;
+char* strdest = "";
 
 
 //Daniel Initializations
@@ -267,7 +272,7 @@ FRESULT scan_files (char* path)
     UINT i;
     static FILINFO fno;
     selector = 0;
-    res = f_opendir(&dir, path);                       /* Open the directory */
+    res = f_opendir(&dir, path);                       /* headerOpen the directory */
     if (res == FR_OK) {
         for (;;) {
             res = f_readdir(&dir, &fno);                   /* Read a directory item */
@@ -292,41 +297,58 @@ FRESULT scan_files (char* path)
 }
 
 int wav_function(char* filename){
+//    char* filename = "SINE8.WAV";
+   f_open(&f, filename, FA_READ);
 
-       //    char* filename = "SINE8.WAV";
-           f_open(&f, filename, FA_READ);
+   f_read(&f, &header, sizeof(sWavHeader) ,&hs);
 
-           f_read(&f, &header, sizeof(sWavHeader) ,&hs);
-           f_read(&f, &buffer, sizeof(buffer), &br);
-           setup(&header, &buffer);
+   //list chunk check
+   if(header.Subchunk2ID != 0x61746164){ //check to make sure that it is data next
+       fres = f_lseek(&f, f_tell(&f) - 8); //go back to subchunk2id
+       f_read(&f, &list, sizeof(uint32_t), &hs);//read subchunk2id
+       while(list != 0x61746164){//while subchunk id not 'data'
+           f_read(&f, &list, 4, &hs); //read subchunk size
+           f_lseek(&f, f_tell(&f) + list); //skip to end of data
+           f_read(&f, &list, sizeof(uint32_t), &hs); //read new subchunk id
+       }
+       header.Subchunk2ID = list; //make subchunk 'data'
+       f_read(&f, &header.Subchunk2Size, sizeof(uint32_t), &hs); //'data' size
+   }
 
-           f_close(&f);
+   //check number of channels
+   channels = header.NumChannels;
+   fileLen = header.Subchunk2Size * 8 / header.BitsPerSample / header.SampleRate;
 
-           return 0;
+   f_read(&f, &buffer, sizeof(buffer), &br);
+   setup();
+
+//           f_close(&f);
+
+   return 0;
 }
 
-void setup(sWavHeader *header, BYTE buffer){
-
+void setup(){
     //timer 6 enable
     RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
 
     TIM6->PSC = 1-1;
-    TIM6->ARR = (48000000/(header->SampleRate)) -1;
+    TIM6->ARR = (48000000/(header.SampleRate * channels)) -1;
     //TIM6->DIER |= TIM_DIER_UDE;
     TIM6->CR2 |= 0x20;
-    TIM6->CR1 |= TIM_CR1_ARPE;
+    //TIM6->CR1 |= TIM_CR1_ARPE;
     TIM6->CR1 |= TIM_CR1_CEN;
 
     //setting up the DMA
     RCC->AHBENR |= RCC_AHBENR_DMA1EN;
     DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel3-> CMAR = (uint32_t)&buffer;
-    if(header->BitsPerSample == 8){
+    if(header.BitsPerSample == 8){
+        DMA1_Channel3-> CMAR = (uint32_t)buffer;
         DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
         DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
         DMA1_Channel3->CNDTR = SAMPLES;
     }
     else{
+        DMA1_Channel3-> CMAR = (uint32_t)buffer16;
         DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
         DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
         DMA1_Channel3->CNDTR = SAMPLES/2;
@@ -340,40 +362,69 @@ void setup(sWavHeader *header, BYTE buffer){
 
     //Set up the DAC
     RCC->APB1ENR |= RCC_APB1ENR_DACEN;
-    DAC->CR &= DAC_CR_EN1;
+    DAC->CR &= ~DAC_CR_EN1;
     DAC->CR &= ~DAC_CR_TSEL1;
     DAC->CR |= DAC_CR_DMAEN1;
     DAC->CR |= DAC_CR_TEN1;
     DAC->CR |= DAC_CR_EN1;
 }
 void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
+    ////////////new//////
+    if(f_eof(f)){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+    ///////////////////
     if(DMA1->ISR & DMA_ISR_HTIF3){
-        DMA1->IFCR = DMA_IFCR_CHTIF3;
-        f_read(&f, &buffer, SAMPLES/2, &br);
-        if(br != SAMPLES/2){
-            finish = 1;
+        DMA1->IFCR |= DMA_IFCR_CHTIF3;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer, SAMPLES/2, &br);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
         }
         if(header.BitsPerSample == 16){
-            for(int i = 0; i<SAMPLES/2; i++){
-                buffer[i] ^= 0x80;
+            f_read(&f, &buffer16, SAMPLES/2, &br);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+            for(int i = 0; i<SAMPLES/4; i++){
+                //buffer[i] ^= 0x80;
+                buffer16[i] += 0x8000;
             }
         }
     }
     if(DMA1->ISR & DMA_ISR_TCIF3){
-        DMA1->IFCR = DMA_IFCR_CTCIF3;
-        f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
-        if(br != SAMPLES/2){
-                    finish = 1;
-                }
-        if(header.BitsPerSample == 16){
-            for(int i = SAMPLES/2; i<SAMPLES; i++){
-                buffer[i] ^= 0x80;
-            }
+        DMA1->IFCR |= DMA_IFCR_CTCIF3;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                        finish = 1;
+//                    }
         }
+        if(header.BitsPerSample == 16){
+            f_read(&f, &buffer16[SAMPLES/4], SAMPLES/2, &br2);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+            for(int i = SAMPLES/4; i<SAMPLES/2; i++){
+                //buffer[i] ^= 0x80;
+                buffer16[i] += 0x8000;
+            }
+        }currentPos += SAMPLES/2;
     }
     if(finish == 1){
         DMA1_Channel3->CCR &= ~DMA_CCR_EN;
     }
+    currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
+}
+
+void strappend(char* string){
+    strcat(strdest, "/");
+    strcat(strdest, string);
 }
 //#define ZIROFXNS
 #if defined(ZIROFXNS)
@@ -507,9 +558,8 @@ int main() {
 
 int main() {
 
-
     //init_usart5();
-    init_keyPad();
+    //init_keyPad();
     enable_tty_interrupt();
     setbuf(stdin,0);
     setbuf(stdout,0);
@@ -522,8 +572,9 @@ int main() {
     LCD_Clear(BLACK);
     //printString("hahahahaha gay gay gay", 0, 0);
 
-    enable_sdcard();
-    fres = f_mount(&FatFs, "", 1);
+    //enable_sdcard();
+    FATFS *fs = &FatFs;
+    fres = f_mount(fs, "", 1);
 
     if (fres != FR_OK) {
         printString("SD Card did not mount", 0, 20);
@@ -531,7 +582,12 @@ int main() {
     else {
         printString("SD Card Mounted", 0, 40);
     }
-    wav_function("sine8.wav");
+    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+    GPIOA -> MODER |= GPIO_MODER_MODER4;
+//    f_opendir(&dir, "/new_fo~1");
+    wav_function("ppap.wav");
+    while(currentPos != fileLen);
+//    f_close(&f);
 
     fres = f_getcwd(str, 40);  /* Get current directory path */
     printString(str, 0, 0);
