@@ -26,17 +26,18 @@ int binds[9];
 int cursorpos = 0;
 
 //Bind globals
-int bind0[10];
-int bind1[10];
-int bind2[10];
-int bind3[10];
-int bind4[10];
-int bind5[10];
-int bind6[10];
-int bind7[10];
-int bind8[10];
-int bind9[10];
-int intaddy[10];
+char bind0[60];
+char bind1[60];
+char bind2[60];
+char bind3[60];
+char bind4[60];
+char bind5[60];
+char bind6[60];
+char bind7[60];
+char bind8[60];
+char bind9[60];
+char intaddy[60];
+char strdest[60];
 
 //Keypad necessities
 const char keymap[] = "DCBA#9630852*741";
@@ -57,6 +58,22 @@ FIL fil;
 FRESULT fres;
 TCHAR str[40];
 DIR currDir;
+
+//wav initializations
+sWavHeader header;
+FIL f;
+BYTE buffer[SAMPLES];
+uint16_t buffer16[SAMPLES/2];
+UINT hs, br, br2;
+uint32_t list;
+int channels = 1;
+FRESULT fres;
+int currentPos = 0;
+int currentSec = 0;
+int finish = 0;
+int fileLen;
+
+
 
 //Lab 10 Fxns
 void init_usart5()//Emir Lab10
@@ -270,6 +287,8 @@ void printString(char * string, int x, int p) {
     y += (10 + 10);
 }
 
+static FILINFO fon;
+
 FRESULT scan_files (char* path)
 {//populates array with directory
 
@@ -301,82 +320,6 @@ FRESULT scan_files (char* path)
     selector = 0;
     return res;
 }
-
-int wav_function(char* filename){
-
-           sWavHeader header;
-           FIL f;
-           BYTE buffer[SAMPLES];
-           UINT hs, br, br2;
-           uint32_t fileLength;
-           FATFS FatFs;
-           FRESULT fres;
-
-       //    char* filename = "SINE8.WAV";
-           f_open(&f, filename, FA_READ);
-
-           f_read(&f, &header, sizeof(sWavHeader) ,&hs);
-           f_read(&f, &buffer, sizeof(buffer), &br);
-           setup(&header, &buffer);
-           fileLength = header.Subchunk2Size;
-           for(int x = fileLength; x>SAMPLES/2; x -= SAMPLES){
-                   if(DMA1->ISR & DMA_ISR_HTIF3){
-                       DMA1->IFCR = DMA_IFCR_CHTIF3;
-                       f_read(&f, &buffer, SAMPLES/2, &br);
-                   }
-                   if(DMA1->ISR & DMA_ISR_TCIF3){
-                       DMA1->IFCR = DMA_IFCR_CTCIF3;
-                       f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
-                   }
-               }
-
-           f_close(&f);
-
-           return 0;
-}
-
-void setup(sWavHeader *header, BYTE buffer){
-
-    //timer 6 enable
-    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
-
-    TIM6->PSC = 1-1;
-    TIM6->ARR = (48000000/(header->SampleRate)) -1;
-    //TIM6->DIER |= TIM_DIER_UDE;
-    TIM6->CR2 |= 0x20;
-    TIM6->CR1 |= TIM_CR1_ARPE;
-    TIM6->CR1 |= TIM_CR1_CEN;
-
-    //setting up the DMA
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    DMA1_Channel3-> CMAR = (uint32_t)buffer;
-    if(header->BitsPerSample == 8){
-        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
-        DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
-        DMA1_Channel3->CNDTR = SAMPLES;
-    }
-    else{
-        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
-        DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
-        DMA1_Channel3->CNDTR = SAMPLES/2;
-    }
-    DMA1_Channel3->CCR |= DMA_CCR_DIR;
-    DMA1_Channel3->CCR |= DMA_CCR_MINC;
-    DMA1_Channel3->CCR |= DMA_CCR_CIRC;
-    DMA1_Channel3->CCR |= DMA_CCR_HTIE | DMA_CCR_TCIE;
-    DMA1_Channel3->CCR |= DMA_CCR_EN;
-    NVIC->ISER[0] = 1<<DMA1_Channel2_3_IRQn;
-
-    //Set up the DAC
-    RCC->APB1ENR |= RCC_APB1ENR_DACEN;
-    DAC->CR &= DAC_CR_EN1;
-    DAC->CR &= ~DAC_CR_TSEL1;
-    DAC->CR |= DAC_CR_DMAEN1;
-    DAC->CR |= DAC_CR_TEN1;
-    DAC->CR |= DAC_CR_EN1;
-}
-
 
 //Keypad Fxns (Emir Lab 6)
 void enable_ports(void) { //Emir lab6
@@ -484,6 +427,16 @@ void setupkeypad()
     return;
 }
 
+void strappend(char* string)
+{//Emir+Seth magic fxn
+    strcat(strdest, "/");
+    strcat(strdest, string);
+}
+
+void clearstrdest()
+{
+    memset(strdest,0,60);
+}
 
 //ZP Song Display and Binding Fxns
 void rendercursor(void)
@@ -492,11 +445,13 @@ void rendercursor(void)
     if (cursorpos < 0)
     {
         cursorpos = 9;
+        clearsongsBIND();
         drawstring(1, 4, 0xFFFF, 0000, " ");
         drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
     }
     else if (cursorpos > 9)
     {
+        clearsongsBIND();
         cursorpos = 0;
         drawstring(1, 13, 0xFFFF, 0000, " ");
         drawstring(1, cursorpos+4, 0xFFFF, 0000, ">");
@@ -536,87 +491,51 @@ void clearscreen()
     //because fuck you, that's why.
 }
 
-void intaddyrst()
+void clearsongsBIND(void)
 {
-    for (int i = 0; i < 10; i++)
+    for (int i = 4; i <14; i++)
     {
-        intaddy[i] = -666;
-    }
-    return;
-}
-
-void drill(int drillno)
-{ //This will go to the very end of an IP array
-    int drillarr[10];
-    if (drillno == 0)
-    {
-        strcpy(drillarr,bind0);
-    }
-    if (drillno == 1)
-    {
-        strcpy(drillarr,bind1);
-    }
-    if (drillno == 2)
-    {
-        strcpy(drillarr,bind2);
-    }
-    if (drillno == 3)
-    {
-        strcpy(drillarr,bind3);
-    }
-    if (drillno == 4)
-    {
-        strcpy(drillarr,bind4);
-    }
-    if (drillno == 5)
-    {
-        strcpy(drillarr,bind5);
-    }
-    if (drillno == 6)
-    {
-        strcpy(drillarr,bind6);
-    }
-    if (drillno == 7)
-    {
-        strcpy(drillarr,bind7);
-    }
-    if (drillno == 8)
-    {
-        strcpy(drillarr,bind8);
-    }
-    if (drillno == 9)
-    {
-        strcpy(drillarr,bind9);
-    }
-    int i;
-    for (i = 0; drillarr[i] != -666; i++)
-    {
-        fres = f_chdir(drillarr[i]);
-        //fres = f_getcwd(str, 40);  /* Get current directory path */
-        //CALL SETH+EMIR fxn here
+        drawstring(2,i,0xffff,0,"             ");
     }
 }
 
-void intydeappend()
+void InitNPUI() //zp UI initialization
 {
-    int j;
-    for (j = 0; intaddy[j] != -666; j++)
-    {
-        ///printf("%d ",intaddy[j]);
-    }
-    intaddy[j-1] = -666;
-}
+    LCD_DrawString(0, 0, 0xF800, 0000, "Epic ECE362 .wav Player" , 16, 0);
+    LCD_DrawString(0, 16, 0xF800, 0000, "Now Playing" , 16, 0);
+    drawstring(0, 2, 0xFFFF, 0000, "------------------------------");
+    drawstring(0, 3, 0xFFFF, 0000, "%songname%");
+    drawstring(0, 4, 0xFFFF, 0000, "Song Progress:      /");
 
-void intyappend()
-{
-    int i;
-    for (i = 0; intaddy[i] != -666; i++)
-        {
-            //printf("%d ",intaddy[i]);
-        }
-    printf("\nappending  %d",selector);
-    intaddy[i] = selector;
-    return;
+    //Song binds UI:
+    drawstring(0, 6, 0xFFFF, 0000, "0:");
+    drawstring(0, 7, 0xFFFF, 0000, "1:");
+    drawstring(0, 8, 0xFFFF, 0000, "2:");
+    drawstring(0, 9, 0xFFFF, 0000, "3:");
+    drawstring(0, 10, 0xFFFF, 0000, "4:");
+    drawstring(0, 11, 0xFFFF, 0000, "5:");
+    drawstring(0, 12, 0xFFFF, 0000, "6:");
+    drawstring(0, 13, 0xFFFF, 0000, "7:");
+    drawstring(0, 14, 0xFFFF, 0000, "8:");
+    drawstring(0, 15, 0xFFFF, 0000, "9:");
+
+    //Bound songs list
+
+    drawstring(2,6,0x001F,0000,bind0);
+    drawstring(2,6,0x001F,0000,bind1);
+    drawstring(2,6,0x001F,0000,bind2);
+    drawstring(2,6,0x001F,0000,bind3);
+    drawstring(2,6,0x001F,0000,bind4);
+    drawstring(2,6,0x001F,0000,bind5);
+    drawstring(2,6,0x001F,0000,bind6);
+    drawstring(2,6,0x001F,0000,bind7);
+    drawstring(2,6,0x001F,0000,bind8);
+    drawstring(2,6,0x001F,0000,bind9);
+
+    //Bottom UI
+    drawstring(0,16,0xF800,0000,"------------------------------");
+    drawstring(0,17,0x07FF,0000,"Press 1-9 to play the bound");
+    drawstring(0,18,0x07FF,0000,"sounds");
 }
 
 int keyinput(char key,int mode)
@@ -625,26 +544,28 @@ int keyinput(char key,int mode)
 
     if (key == '#')
     {//switch modes
+        DMA1_Channel3 -> CCR &= ~DMA_CCR_EN;
         if (mode == BIND)
-                    {
-                        mode = PLAY;
-                        clearscreen();
-                        InitNPUI(fileList);
-                        return PLAY;
+        {
+            mode = PLAY;
+            clearscreen();
+            InitNPUI();
+            return PLAY;
 
-                    }
-                    else
-                    {
-                        mode = BIND;
-                        clearscreen();
-                        InitBindUI(fileList);
-                        dispsongsBM(0);
-                        //UI bundle
-                        drawfolder(str);
-                        resetcursor();
-                        selector = 0;
-                        return BIND;
-                    }
+        }
+        else
+        {
+            mode = BIND;
+            clearscreen();
+            InitBindUI(fileList);
+            dispsongsBM(0);
+            //UI bundle
+            drawfolder(str);
+            resetcursor();
+            selector = 0;
+            dispsongsBM(selector / 10);
+            return BIND;
+        }
     }
     if (mode == BIND)
     {
@@ -653,12 +574,12 @@ int keyinput(char key,int mode)
             cursorpos--;
             selector--;
             rendercursor();
+            //clearsongsBIND();
         }
         if (key == 'B')
         {// >>
             //drawstring(0,0,0xffff,0,fileList[selector]);
-//            if (fileList[selector] != ' ')
-//                intyappend(); //INTY MUST BE BEFORE THE SELECTOR RESET!!!
+            strappend(fileList[selector]);
             fres = f_chdir(fileList[selector]);
             fres = f_getcwd(str, 40);  /* Get current directory path */
             y = 0;
@@ -672,55 +593,89 @@ int keyinput(char key,int mode)
         {//Down
             cursorpos++;
             selector++;
+            //clearsongsBIND();
             rendercursor();
+
         }
         if (key == 'D')
         {// ..
+            /*
             fres = f_chdir("..");
+            fres = f_getcwd(str, 40);
+            emptyFileList();
+            fres = scan_files(str);
+            selector = 0;
+            drawfolder("         ");
+            drawfolder(str);
+            resetcursor();
+            */
+            clearstrdest();
+            //Turbo D
+            fres = f_chdir("/");
             fres = f_getcwd(str, 40);  /* Get current directory path */
             emptyFileList();
             fres = scan_files(str);
             selector = 0;
             drawfolder("         ");
             drawfolder(str);
-            intydeappend();
             resetcursor();
         }
         if (key == '1')
         {
-            strcpy(bind1, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind1, strdest);
+            drawstring(0,0,0xffff,0,bind1);
+            clearstrdest();
+
+            //Turbo D
+            fres = f_chdir("/");
+            fres = f_getcwd(str, 40);  /* Get current directory path */
+            emptyFileList();
+            fres = scan_files(str);
+            selector = 0;
+            drawfolder("         ");
+            drawfolder(str);
+            resetcursor();
         }
         if (key == '2')
         {
-            strcpy(bind2, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind2, strdest);
         }
         if (key == '3')
         {
-            strcpy(bind3, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind3, strdest);
         }
         if (key == '4')
         {
-            strcpy(bind4, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind4, strdest);
         }
         if (key == '5')
         {
-            strcpy(bind5, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind5, strdest);
         }
         if (key == '6')
         {
-            strcpy(bind6, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind6, strdest);
         }
         if (key == '7')
         {
-            strcpy(bind7, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind7, strdest);
         }
         if (key == '8')
         {
-            strcpy(bind8, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind8, strdest);
         }
         if (key == '9')
         {
-            strcpy(bind9, intaddy);
+            strappend(fileList[selector]);
+            strcpy(bind9, strdest);
         }
         if (key == '0')
         {
@@ -754,7 +709,7 @@ int keyinput(char key,int mode)
         }
         if (key == '1')
         {
-
+            wav_function(bind1);
         }
         if (key == '2')
         {
@@ -796,6 +751,134 @@ int keyinput(char key,int mode)
     }
 }
 
+
+//Emir and Seth wav fxns
+int wav_function(char* filename){
+//    char* filename = "SINE8.WAV";
+   f_open(&f, filename, FA_READ);
+
+   f_read(&f, &header, sizeof(sWavHeader) ,&hs);
+
+   //list chunk check
+   if(header.Subchunk2ID != 0x61746164){ //check to make sure that it is data next
+       fres = f_lseek(&f, f_tell(&f) - 8); //go back to subchunk2id
+       f_read(&f, &list, sizeof(uint32_t), &hs);//read subchunk2id
+       while(list != 0x61746164){//while subchunk id not 'data'
+           f_read(&f, &list, 4, &hs); //read subchunk size
+           f_lseek(&f, f_tell(&f) + list); //skip to end of data
+           f_read(&f, &list, sizeof(uint32_t), &hs); //read new subchunk id
+       }
+       header.Subchunk2ID = list; //make subchunk 'data'
+       f_read(&f, &header.Subchunk2Size, sizeof(uint32_t), &hs); //'data' size
+   }
+
+   //check number of channels
+   channels = header.NumChannels;
+   fileLen = header.Subchunk2Size * 8 / header.BitsPerSample / header.SampleRate;
+
+   f_read(&f, &buffer, sizeof(buffer), &br);
+   wav_setup();
+
+//           f_close(&f);
+
+   return 0;
+}
+
+void wav_setup(){
+    //timer 6 enable
+    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
+
+    TIM6->PSC = 1-1;
+    TIM6->ARR = (48000000/(header.SampleRate * channels)) -1;
+    //TIM6->DIER |= TIM_DIER_UDE;
+    TIM6->CR2 |= 0x20;
+    //TIM6->CR1 |= TIM_CR1_ARPE;
+    TIM6->CR1 |= TIM_CR1_CEN;
+
+    //setting up the DMA
+    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    if(header.BitsPerSample == 8){
+        DMA1_Channel3-> CMAR = (uint32_t)buffer;
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
+        DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+        DMA1_Channel3->CNDTR = SAMPLES;
+    }
+    else{
+        DMA1_Channel3-> CMAR = (uint32_t)buffer16;
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
+        DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
+        DMA1_Channel3->CNDTR = SAMPLES/2;
+    }
+    DMA1_Channel3->CCR |= DMA_CCR_DIR;
+    DMA1_Channel3->CCR |= DMA_CCR_MINC;
+    DMA1_Channel3->CCR |= DMA_CCR_CIRC;
+    DMA1_Channel3->CCR |= DMA_CCR_HTIE | DMA_CCR_TCIE;
+    DMA1_Channel3->CCR |= DMA_CCR_EN;
+    NVIC->ISER[0] = 1<<DMA1_Channel2_3_IRQn;
+
+    //Set up the DAC
+    RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+    DAC->CR &= ~DAC_CR_EN1;
+    DAC->CR &= ~DAC_CR_TSEL1;
+    DAC->CR |= DAC_CR_DMAEN1;
+    DAC->CR |= DAC_CR_TEN1;
+    DAC->CR |= DAC_CR_EN1;
+}
+void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
+    ////////////new//////
+    if(f_eof(f)){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+    ///////////////////
+    if(DMA1->ISR & DMA_ISR_HTIF3){
+        DMA1->IFCR |= DMA_IFCR_CHTIF3;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer, SAMPLES/2, &br);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+        }
+        if(header.BitsPerSample == 16){
+            f_read(&f, &buffer16, SAMPLES/2, &br);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+            for(int i = 0; i<SAMPLES/4; i++){
+                //buffer[i] ^= 0x80;
+                buffer16[i] += 0x8000;
+            }
+        }
+    }
+    if(DMA1->ISR & DMA_ISR_TCIF3){
+        DMA1->IFCR |= DMA_IFCR_CTCIF3;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                        finish = 1;
+//                    }
+        }
+        if(header.BitsPerSample == 16){
+            f_read(&f, &buffer16[SAMPLES/4], SAMPLES/2, &br2);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+            for(int i = SAMPLES/4; i<SAMPLES/2; i++){
+                //buffer[i] ^= 0x80;
+                buffer16[i] += 0x8000;
+            }
+        }currentPos += SAMPLES/2;
+    }
+    if(finish == 1){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+    currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
+}
+
 #define ZIROFXNS
 #if defined(ZIROFXNS)
 int main() {
@@ -812,7 +895,6 @@ int main() {
     setupkeypad();
     cursorpos = 0;
     //rendercursor();
-    intaddyrst();
 
     //Set up UI
     quickLCDinit();
