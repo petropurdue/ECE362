@@ -33,7 +33,11 @@ UINT hs, br, br2;
 uint32_t list;
 int channels = 1;
 FRESULT fres;
+int currentPos = 0;
+int currentSec = 0;
 int finish = 0;
+int fileLen;
+char* strdest = "";
 
 
 //Daniel Initializations
@@ -268,7 +272,7 @@ FRESULT scan_files (char* path)
     UINT i;
     static FILINFO fno;
     selector = 0;
-    res = f_opendir(&dir, path);                       /* Open the directory */
+    res = f_opendir(&dir, path);                       /* headerOpen the directory */
     if (res == FR_OK) {
         for (;;) {
             res = f_readdir(&dir, &fno);                   /* Read a directory item */
@@ -313,6 +317,7 @@ int wav_function(char* filename){
 
    //check number of channels
    channels = header.NumChannels;
+   fileLen = header.Subchunk2Size * 8 / header.BitsPerSample / header.SampleRate;
 
    f_read(&f, &buffer, sizeof(buffer), &br);
    setup();
@@ -362,23 +367,28 @@ void setup(){
     DAC->CR |= DAC_CR_DMAEN1;
     DAC->CR |= DAC_CR_TEN1;
     DAC->CR |= DAC_CR_EN1;
-
-
 }
 void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
+    ////////////new//////
+    if(f_eof(f)){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+    ///////////////////
     if(DMA1->ISR & DMA_ISR_HTIF3){
         DMA1->IFCR |= DMA_IFCR_CHTIF3;
         if(header.BitsPerSample == 8){
             f_read(&f, &buffer, SAMPLES/2, &br);
-            if(br != SAMPLES/2){
-                        finish = 1;
-                    }
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
         }
         if(header.BitsPerSample == 16){
             f_read(&f, &buffer16, SAMPLES/2, &br);
-            if(br != SAMPLES/2){
-                finish = 1;
-            }
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
             for(int i = 0; i<SAMPLES/4; i++){
                 //buffer[i] ^= 0x80;
                 buffer16[i] += 0x8000;
@@ -389,24 +399,32 @@ void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
         DMA1->IFCR |= DMA_IFCR_CTCIF3;
         if(header.BitsPerSample == 8){
             f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
-            if(br != SAMPLES/2){
-                        finish = 1;
-                    }
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                        finish = 1;
+//                    }
         }
         if(header.BitsPerSample == 16){
             f_read(&f, &buffer16[SAMPLES/4], SAMPLES/2, &br2);
-            if(br != SAMPLES/2){
-                finish = 1;
-            }
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
             for(int i = SAMPLES/4; i<SAMPLES/2; i++){
                 //buffer[i] ^= 0x80;
                 buffer16[i] += 0x8000;
             }
-        }
+        }currentPos += SAMPLES/2;
     }
     if(finish == 1){
         DMA1_Channel3->CCR &= ~DMA_CCR_EN;
     }
+    currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
+}
+
+void strappend(char* string){
+    strcat(strdest, "/");
+    strcat(strdest, string);
 }
 //#define ZIROFXNS
 #if defined(ZIROFXNS)
@@ -540,7 +558,6 @@ int main() {
 
 int main() {
 
-
     //init_usart5();
     //init_keyPad();
     enable_tty_interrupt();
@@ -567,9 +584,9 @@ int main() {
     }
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
     GPIOA -> MODER |= GPIO_MODER_MODER4;
-
-    wav_function("NGGYU2.wav");
-    while(1);
+//    f_opendir(&dir, "/new_fo~1");
+    wav_function("moon.wav");
+    while(currentPos != fileLen);
 //    f_close(&f);
 
     fres = f_getcwd(str, 40);  /* Get current directory path */
