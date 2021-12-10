@@ -25,6 +25,19 @@ int seroffset = 0;
 int binds[9];
 int cursorpos = 0;
 
+//Bind globals
+int bind0[10];
+int bind1[10];
+int bind2[10];
+int bind3[10];
+int bind4[10];
+int bind5[10];
+int bind6[10];
+int bind7[10];
+int bind8[10];
+int bind9[10];
+int intaddy[10];
+
 //Keypad necessities
 const char keymap[] = "DCBA#9630852*741";
 uint8_t hist[16];
@@ -71,10 +84,7 @@ void init_usart5()//Emir Lab10
     USART5 -> CR1 &= ~USART_CR1_PCE; //no parity
     USART5 -> CR1 &= ~USART_CR1_OVER8; //oversampling 16x
     USART5->BRR |= 0x1A1;//baud rate to 115.kBaud
-    USART5->CR1 |= USART_CR1_RE;void strappend(char* string){
-    strcat(strdest, "/");
-    strcat(strdest, string);
-}
+    USART5->CR1 |= USART_CR1_RE;
     USART5->CR1 |= USART_CR1_TE;
     USART5 -> CR1 |= USART_CR1_UE;
     while(!(USART5->ISR & USART_ISR_TEACK)&&(USART5->ISR &USART_ISR_REACK));
@@ -211,12 +221,12 @@ void init_keyPad() { // uses ABCD
     RCC -> AHBENR |= RCC_AHBENR_GPIOCEN;
     GPIOC -> MODER &= ~0xffff;
     GPIOC -> MODER |= 0x5500;
-    GPIOC -> ODR |= 0x10; //responsible for the general purpose output
+    GPIOC -> ODR |= 0x10;
     GPIOC -> PUPDR &= ~0xff;
     GPIOC -> PUPDR |= 0xaa;
 }
 
-void printCurrDir() { //check here for cutoff(?)
+void printCurrDir() {
     LCD_Clear(BLACK);
     fres = f_getcwd(str, 40);  /* Get current directory path */
     y = 0;
@@ -226,11 +236,10 @@ void printCurrDir() { //check here for cutoff(?)
 }
 
 void printFileList() { // CHANGE SO SELECTOR DOES NOT GO OUT OF BOUNDS
-    //check here for cutoff(?)
     y = 40;
     printCursor((selector + 2) * 20);
     for(int i = 0; i < 40; i++) {
-        printString(fileList[i], 0, 0);
+        printString(fileList[i],0,0);
     }
 }
 
@@ -241,26 +250,28 @@ void emptyFileList() {
 }
 
 void printCursor(int a) {
-    //change color to whatever!! 
-     LCD_DrawFillRectangle(0, (a + 0), 10, (a + 20), RED);
+    //change color to whatever!!
+     LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, RED);
 }
 
-void printString(char * str, int x, int pp) { //check here for cutoff
-
+void printString(char * string, int x, int p) {
+    //int y = 100;
+    //int x = 0;
     int checker = 0;
-    for(int i = checker; str[i] != '\0'; i++) {
-        LCD_DrawChar((x * 10) + (10 + 10), y, WHITE, BLACK, str[i], (4 * 4), 1);
+    for(int i = checker; string[i] != '\0'; i++) {
+        LCD_DrawChar((x * 10) + (10 + 10), y, WHITE, BLACK, string[i], (4 * 4), 1);
 
-        if (200 <= (10 * x)) {
-            x = (0 - 1);
-            y += 20;
-        }
+    if (200 <= (10 * x)) {
+        x = (0 - 1);
+        y += 20;
+    }
         x += 1;
     }
     y += (10 + 10);
 }
 
-FRESULT scan_files (char* path) { //populates array with directory
+FRESULT scan_files (char* path)
+{//populates array with directory
 
     FRESULT res;
     DIR dir;
@@ -421,6 +432,7 @@ void push_queue(int n) {
     queue[qin] = n;
     qin ^= 1;
 }
+
 uint8_t pop_queue() {
     uint8_t tmp = queue[qout] & 0x7f;
     queue[qout] = 0;
@@ -461,6 +473,7 @@ char get_keypress() {
             continue;
         return keymap[pop_queue()];
     }
+    return -1;
 }
 
 void setupkeypad()
@@ -471,6 +484,8 @@ void setupkeypad()
     return;
 }
 
+
+//ZP Song Display and Binding Fxns
 void rendercursor(void)
 {
     //account for out of bounds
@@ -495,12 +510,13 @@ void rendercursor(void)
     }
 }
 
-void dispsongsBM()
+void dispsongsBM(int offset)
 {
     //Bound songs list
+    offset*=10;
     for (int i = 0; i < 10; i++)
     {
-        drawstring(2,i+4,0x001F,0000,fileList[i]);
+        drawstring(2,i+4,0x001F,0000,fileList[i+offset]);
     }
 }
 
@@ -518,6 +534,89 @@ void clearscreen()
 {
     UIInit();
     //because fuck you, that's why.
+}
+
+void intaddyrst()
+{
+    for (int i = 0; i < 10; i++)
+    {
+        intaddy[i] = -666;
+    }
+    return;
+}
+
+void drill(int drillno)
+{ //This will go to the very end of an IP array
+    int drillarr[10];
+    if (drillno == 0)
+    {
+        strcpy(drillarr,bind0);
+    }
+    if (drillno == 1)
+    {
+        strcpy(drillarr,bind1);
+    }
+    if (drillno == 2)
+    {
+        strcpy(drillarr,bind2);
+    }
+    if (drillno == 3)
+    {
+        strcpy(drillarr,bind3);
+    }
+    if (drillno == 4)
+    {
+        strcpy(drillarr,bind4);
+    }
+    if (drillno == 5)
+    {
+        strcpy(drillarr,bind5);
+    }
+    if (drillno == 6)
+    {
+        strcpy(drillarr,bind6);
+    }
+    if (drillno == 7)
+    {
+        strcpy(drillarr,bind7);
+    }
+    if (drillno == 8)
+    {
+        strcpy(drillarr,bind8);
+    }
+    if (drillno == 9)
+    {
+        strcpy(drillarr,bind9);
+    }
+    int i;
+    for (i = 0; drillarr[i] != -666; i++)
+    {
+        fres = f_chdir(drillarr[i]);
+        //fres = f_getcwd(str, 40);  /* Get current directory path */
+        //CALL SETH+EMIR fxn here
+    }
+}
+
+void intydeappend()
+{
+    int j;
+    for (j = 0; intaddy[j] != -666; j++)
+    {
+        ///printf("%d ",intaddy[j]);
+    }
+    intaddy[j-1] = -666;
+}
+
+void intyappend()
+{
+    int i;
+    for (i = 0; intaddy[i] != -666; i++)
+        {
+            //printf("%d ",intaddy[i]);
+        }
+    printf("\nappending  %d",selector);
+    intaddy[i] = selector;
+    return;
 }
 
 int keyinput(char key,int mode)
@@ -539,13 +638,16 @@ int keyinput(char key,int mode)
                         mode = BIND;
                         clearscreen();
                         InitBindUI(fileList);
-                        dispsongsBM();
+                        dispsongsBM(0);
+                        //UI bundle
+                        drawfolder(str);
+                        resetcursor();
+                        selector = 0;
                         return BIND;
                     }
     }
     if (mode == BIND)
     {
-        dispsongsBM();
         if (key == 'A')
         {//Up
             cursorpos--;
@@ -554,6 +656,9 @@ int keyinput(char key,int mode)
         }
         if (key == 'B')
         {// >>
+            //drawstring(0,0,0xffff,0,fileList[selector]);
+//            if (fileList[selector] != ' ')
+//                intyappend(); //INTY MUST BE BEFORE THE SELECTOR RESET!!!
             fres = f_chdir(fileList[selector]);
             fres = f_getcwd(str, 40);  /* Get current directory path */
             y = 0;
@@ -561,13 +666,13 @@ int keyinput(char key,int mode)
             emptyFileList();
             fres = scan_files(str);
             resetcursor();
+            selector = 0;
         }
         if (key == 'C')
         {//Down
             cursorpos++;
             selector++;
             rendercursor();
-
         }
         if (key == 'D')
         {// ..
@@ -575,49 +680,58 @@ int keyinput(char key,int mode)
             fres = f_getcwd(str, 40);  /* Get current directory path */
             emptyFileList();
             fres = scan_files(str);
+            selector = 0;
+            drawfolder("         ");
+            drawfolder(str);
+            intydeappend();
             resetcursor();
         }
         if (key == '1')
         {
-
+            strcpy(bind1, intaddy);
         }
         if (key == '2')
         {
-
+            strcpy(bind2, intaddy);
         }
         if (key == '3')
         {
-
+            strcpy(bind3, intaddy);
         }
         if (key == '4')
         {
-
+            strcpy(bind4, intaddy);
         }
         if (key == '5')
         {
-
+            strcpy(bind5, intaddy);
         }
         if (key == '6')
         {
-
+            strcpy(bind6, intaddy);
         }
         if (key == '7')
         {
-
+            strcpy(bind7, intaddy);
         }
         if (key == '8')
         {
-
+            strcpy(bind8, intaddy);
         }
         if (key == '9')
         {
-
+            strcpy(bind9, intaddy);
         }
         if (key == '0')
         {
-
+            //strcpy(bind0, intaddy);
+            for (int i = 0; intaddy[i] != -666; i++)
+            {
+                printf("%d ",intaddy[i]);
+            }
         }
-        dispsongsBM();
+
+        dispsongsBM(selector / 10);
         return BIND;
     }
     else //mode == PLAY
@@ -682,11 +796,6 @@ int keyinput(char key,int mode)
     }
 }
 
-void strappend(char* string){
-    strcat(strdest, "/");
-    strcat(strdest, string);
-}
-
 #define ZIROFXNS
 #if defined(ZIROFXNS)
 int main() {
@@ -695,13 +804,15 @@ int main() {
     setbuf(stdin,0);
     setbuf(stdout,0);
     setbuf(stderr,0);
-
+    //printf("holasd");
     //initialization fxns
     print_pizza();
     enable_sdcard();
     int mode = BIND;
     setupkeypad();
     cursorpos = 0;
+    //rendercursor();
+    intaddyrst();
 
     //Set up UI
     quickLCDinit();
@@ -720,7 +831,7 @@ int main() {
     //Binds UI
     //This one will use cursor and scrolling
     InitBindUI(fileList);
-    dispsongsBM();
+    dispsongsBM(0);
 
 
     //NP UI
@@ -729,105 +840,12 @@ int main() {
 
     //command_shell();
 
-    for(;;) {
+    for(;;)
+    {
         char key = get_keypress();
         mode = keyinput(key,mode);
     }
 
 
 }
-
-#endif
-
-//#define Daniel
-#if defined(Daniel)
-
-int main() {
-
-
-    //init_usart5();
-    init_keyPad();
-    enable_tty_interrupt();
-    setbuf(stdin,0);
-    setbuf(stdout,0);
-    setbuf(stderr,0);
-
-    //initialization fxns
-    //print_pizza();
-    quickLCDinit();
-    quickLCDinit();
-    LCD_Clear(BLACK);
-    //printString("hahahahaha gay gay gay", 0, 0);
-
-    enable_sdcard();
-    fres = f_mount(&FatFs, "", 1);
-
-    if (fres != FR_OK) {
-        printString("SD Card did not mount", 0, 20);
-    }
-    else {
-        printString("SD Card Mounted", 0, 40);
-    }
-    wav_function("sine8.wav");
-
-    fres = f_getcwd(str, 40);  /* Get current directory path */
-    printString(str, 0, 0);
-    fres = scan_files(str);
-    printFileList();
-    int oldvalue = 0;
-    for(;;) { // this is bad, should implement external interrupt
-        if(((GPIOC->IDR & 0x2) != 0)) { // move down dir (keypad C)
-            if(oldvalue == 0) {
-                selector++;
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        else if(((GPIOC->IDR & 0x8) != 0)) { // move up dir (keypad A)
-            if(oldvalue == 0) {
-                selector--;
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        // IN THIS ELSE IF RIGHT BELOW THIS IS WHERE TO IMPLEMENT MUSIC PLAYING...
-        // AN IF STATEMENT NEEDS TO CHECK IF FILELIST[SELECTOR] IS A FILE OR FOLDER
-        // IF ITS A FILE PLAY IT, IF ITS A FOLDER, MOVE INTO IT WHICH IT ALREADY DOES
-        else if(((GPIOC->IDR & 0x4) != 0) && selector >= 0) { // enter dir (keypad B)
-            if(oldvalue == 0) {
-                y = 0;
-                LCD_Clear(BLACK);
-                fres = f_chdir(fileList[selector]);
-                fres = f_getcwd(str, 40);  /* Get current directory path */
-                y = 0;
-                printString(str, 0, 0);
-                emptyFileList();
-                fres = scan_files(str);
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        else if(((GPIOC->IDR & 0x1) != 0)) { // prev dir (keypad D)
-            if(oldvalue == 0) {
-                y = 0;
-                LCD_Clear(BLACK);
-                fres = f_chdir("..");
-                fres = f_getcwd(str, 40);  /* Get current directory path */
-                y = 0;
-                printString(str, 0, 0);
-                emptyFileList();
-                fres = scan_files(str);
-                printCurrDir();
-                oldvalue = 1;
-            }
-        }
-        else {
-            oldvalue = 0;
-        }
-
-    }
-
-
-}
-
 #endif
