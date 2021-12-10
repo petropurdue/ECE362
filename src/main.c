@@ -74,6 +74,133 @@ int finish = 0;
 int fileLen;
 
 
+//Emir and Seth wav fxns
+int wav_function(char* filename){
+//    char* filename = "SINE8.WAV";
+   f_open(&f, filename, FA_READ);
+
+   f_read(&f, &header, sizeof(sWavHeader) ,&hs);
+
+   //list chunk check
+   if(header.Subchunk2ID != 0x61746164){ //check to make sure that it is data next
+       fres = f_lseek(&f, f_tell(&f) - 8); //go back to subchunk2id
+       f_read(&f, &list, sizeof(uint32_t), &hs);//read subchunk2id
+       while(list != 0x61746164){//while subchunk id not 'data'
+           f_read(&f, &list, 4, &hs); //read subchunk size
+           f_lseek(&f, f_tell(&f) + list); //skip to end of data
+           f_read(&f, &list, sizeof(uint32_t), &hs); //read new subchunk id
+       }
+       header.Subchunk2ID = list; //make subchunk 'data'
+       f_read(&f, &header.Subchunk2Size, sizeof(uint32_t), &hs); //'data' size
+   }
+
+   //check number of channels
+   channels = header.NumChannels;
+   fileLen = header.Subchunk2Size * 8 / header.BitsPerSample / header.SampleRate;
+
+   f_read(&f, &buffer, sizeof(buffer), &br);
+   wav_setup();
+
+//           f_close(&f);
+
+   return 0;
+}
+
+void wav_setup(){
+    //timer 6 enable
+    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
+
+    TIM6->PSC = 1-1;
+    TIM6->ARR = (48000000/(header.SampleRate * channels)) -1;
+    //TIM6->DIER |= TIM_DIER_UDE;
+    TIM6->CR2 |= 0x20;
+    //TIM6->CR1 |= TIM_CR1_ARPE;
+    TIM6->CR1 |= TIM_CR1_CEN;
+
+    //setting up the DMA
+    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    if(header.BitsPerSample == 8){
+        DMA1_Channel3-> CMAR = (uint32_t)buffer;
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
+        DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
+        DMA1_Channel3->CNDTR = SAMPLES;
+    }
+    else{
+        DMA1_Channel3-> CMAR = (uint32_t)buffer16;
+        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
+        DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
+        DMA1_Channel3->CNDTR = SAMPLES/2;
+    }
+    DMA1_Channel3->CCR |= DMA_CCR_DIR;
+    DMA1_Channel3->CCR |= DMA_CCR_MINC;
+    DMA1_Channel3->CCR |= DMA_CCR_CIRC;
+    DMA1_Channel3->CCR |= DMA_CCR_HTIE | DMA_CCR_TCIE;
+    DMA1_Channel3->CCR |= DMA_CCR_EN;
+    NVIC->ISER[0] = 1<<DMA1_Channel2_3_IRQn;
+
+    //Set up the DAC
+    RCC->APB1ENR |= RCC_APB1ENR_DACEN;
+    DAC->CR &= ~DAC_CR_EN1;
+    DAC->CR &= ~DAC_CR_TSEL1;
+    DAC->CR |= DAC_CR_DMAEN1;
+    DAC->CR |= DAC_CR_TEN1;
+    DAC->CR |= DAC_CR_EN1;
+}
+
+void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
+    ////////////new//////
+    if(f_eof(f)){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+    ///////////////////
+    if(DMA1->ISR & DMA_ISR_HTIF3){
+        DMA1->IFCR |= DMA_IFCR_CHTIF3;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer, SAMPLES/2, &br);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+        }
+        if(header.BitsPerSample == 16){
+            f_read(&f, &buffer16, SAMPLES/2, &br);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+            for(int i = 0; i<SAMPLES/4; i++){
+                //buffer[i] ^= 0x80;
+                buffer16[i] += 0x8000;
+            }
+        }
+    }
+    if(DMA1->ISR & DMA_ISR_TCIF3){
+        DMA1->IFCR |= DMA_IFCR_CTCIF3;
+        if(header.BitsPerSample == 8){
+            f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                        finish = 1;
+//                    }
+        }
+        if(header.BitsPerSample == 16){
+            f_read(&f, &buffer16[SAMPLES/4], SAMPLES/2, &br2);
+            currentPos += SAMPLES/2;
+//            if(br != SAMPLES/2){
+//                finish = 1;
+//            }
+            for(int i = SAMPLES/4; i<SAMPLES/2; i++){
+                //buffer[i] ^= 0x80;
+                buffer16[i] += 0x8000;
+            }
+        }currentPos += SAMPLES/2;
+    }
+    if(finish == 1){
+        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
+    }
+    currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
+}
 
 //Lab 10 Fxns
 void init_usart5()//Emir Lab10
@@ -243,32 +370,10 @@ void init_keyPad() { // uses ABCD
     GPIOC -> PUPDR |= 0xaa;
 }
 
-void printCurrDir() {
-    LCD_Clear(BLACK);
-    fres = f_getcwd(str, 40);  /* Get current directory path */
-    y = 0;
-    printString(str, 0, 0);
-    //fres = scan_files(str);
-    printFileList();
-}
-
-void printFileList() { // CHANGE SO SELECTOR DOES NOT GO OUT OF BOUNDS
-    y = 40;
-    printCursor((selector + 2) * 20);
-    for(int i = 0; i < 40; i++) {
-        printString(fileList[i],0,0);
-    }
-}
-
 void emptyFileList() {
     for(int i = 0; i < 40; i++) {
         strcpy(fileList[i], " ");
     }
-}
-
-void printCursor(int a) {
-    //change color to whatever!!
-     LCD_DrawFillRectangle(0, 0 + a, 10, 20 + a, RED);
 }
 
 void printString(char * string, int x, int p) {
@@ -491,11 +596,42 @@ void clearscreen()
     //because fuck you, that's why.
 }
 
-void clearsongsBIND(void)
+void clearsongsBIND()
 {
     for (int i = 4; i <14; i++)
     {
         drawstring(2,i,0xffff,0,"             ");
+    }
+    return;
+}
+
+void testVI() //test if last character is VI. I made this function 30 seconds ago and I have no clue why I named it what i did.
+{
+    int w;
+    for (w = 0; strdest[w]; w++)
+    {
+        //get the last character of strdest
+    }
+    if (strdest[w-1] != 'V')
+    {
+        clearscreen();
+        drawstring(0,0,0xF800,0,"I bet you think you're really.");
+        drawstring(0,1,0xF800,0,"clever.");
+        drawstring(0,2,0xF800,0,"Now no one gets to play.");
+
+        while(1)
+        {
+            drawstring(0,3,0xF81F,0,"<(o.o<)");
+            //usleep(500);
+            drawstring(0,3,0xF81F,0,"\\(o.o\\)");
+            //usleep(500);
+            drawstring(0,3,0xF81F,0,"(^o.o^)");
+            //usleep(500);
+            drawstring(0,3,0xF81F,0,"(/o.o)/");
+            //usleep(500);
+            drawstring(0,3,0xF81F,0,"(>o.o)>");
+            //usleep(500);
+        }
     }
 }
 
@@ -522,20 +658,32 @@ void InitNPUI() //zp UI initialization
     //Bound songs list
 
     drawstring(2,6,0x001F,0000,bind0);
-    drawstring(2,6,0x001F,0000,bind1);
-    drawstring(2,6,0x001F,0000,bind2);
-    drawstring(2,6,0x001F,0000,bind3);
-    drawstring(2,6,0x001F,0000,bind4);
-    drawstring(2,6,0x001F,0000,bind5);
-    drawstring(2,6,0x001F,0000,bind6);
-    drawstring(2,6,0x001F,0000,bind7);
-    drawstring(2,6,0x001F,0000,bind8);
-    drawstring(2,6,0x001F,0000,bind9);
+    drawstring(2,7,0x001F,0000,bind1);
+    drawstring(2,8,0x001F,0000,bind2);
+    drawstring(2,9,0x001F,0000,bind3);
+    drawstring(2,10,0x001F,0000,bind4);
+    drawstring(2,11,0x001F,0000,bind5);
+    drawstring(2,12,0x001F,0000,bind6);
+    drawstring(2,13,0x001F,0000,bind7);
+    drawstring(2,14,0x001F,0000,bind8);
+    drawstring(2,15,0x001F,0000,bind9);
 
     //Bottom UI
     drawstring(0,16,0xF800,0000,"------------------------------");
     drawstring(0,17,0x07FF,0000,"Press 1-9 to play the bound");
     drawstring(0,18,0x07FF,0000,"sounds");
+}
+
+void turboD()
+{
+    fres = f_chdir("/");
+    fres = f_getcwd(str, 40);  /* Get current directory path */
+    emptyFileList();
+    fres = scan_files(str);
+    selector = 0;
+    drawfolder("         ");
+    drawfolder(str);
+    resetcursor();
 }
 
 int keyinput(char key,int mode)
@@ -544,7 +692,6 @@ int keyinput(char key,int mode)
 
     if (key == '#')
     {//switch modes
-        DMA1_Channel3 -> CCR &= ~DMA_CCR_EN;
         if (mode == BIND)
         {
             mode = PLAY;
@@ -599,91 +746,96 @@ int keyinput(char key,int mode)
         }
         if (key == 'D')
         {// ..
-            /*
-            fres = f_chdir("..");
-            fres = f_getcwd(str, 40);
-            emptyFileList();
-            fres = scan_files(str);
-            selector = 0;
-            drawfolder("         ");
-            drawfolder(str);
-            resetcursor();
-            */
             clearstrdest();
+            clearsongsBIND();
             //Turbo D
-            fres = f_chdir("/");
-            fres = f_getcwd(str, 40);  /* Get current directory path */
-            emptyFileList();
-            fres = scan_files(str);
-            selector = 0;
-            drawfolder("         ");
-            drawfolder(str);
-            resetcursor();
+            turboD();
+
         }
         if (key == '1')
         {
             strappend(fileList[selector]);
             strcpy(bind1, strdest);
-            drawstring(0,0,0xffff,0,bind1);
-            clearstrdest();
 
+            //testVI();
+            clearstrdest();
+            //drawstring(0,0,0xffff,0,bind1);
+
+            clearstrdest();
             //Turbo D
-            fres = f_chdir("/");
-            fres = f_getcwd(str, 40);  /* Get current directory path */
-            emptyFileList();
-            fres = scan_files(str);
-            selector = 0;
-            drawfolder("         ");
-            drawfolder(str);
-            resetcursor();
+            turboD();
         }
         if (key == '2')
         {
             strappend(fileList[selector]);
             strcpy(bind2, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '3')
         {
             strappend(fileList[selector]);
             strcpy(bind3, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '4')
         {
             strappend(fileList[selector]);
             strcpy(bind4, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '5')
         {
             strappend(fileList[selector]);
             strcpy(bind5, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '6')
         {
             strappend(fileList[selector]);
             strcpy(bind6, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '7')
         {
             strappend(fileList[selector]);
             strcpy(bind7, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '8')
         {
             strappend(fileList[selector]);
             strcpy(bind8, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '9')
         {
             strappend(fileList[selector]);
             strcpy(bind9, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
         if (key == '0')
         {
-            //strcpy(bind0, intaddy);
-            for (int i = 0; intaddy[i] != -666; i++)
-            {
-                printf("%d ",intaddy[i]);
-            }
+            strappend(fileList[selector]);
+            strcpy(bind0, strdest);
+            clearstrdest();
+            //Turbo D
+            turboD();
         }
 
         dispsongsBM(selector / 10);
@@ -709,7 +861,7 @@ int keyinput(char key,int mode)
         }
         if (key == '1')
         {
-            wav_function(bind1);
+            int i = wav_function(bind1);
         }
         if (key == '2')
         {
@@ -751,136 +903,6 @@ int keyinput(char key,int mode)
     }
 }
 
-
-//Emir and Seth wav fxns
-int wav_function(char* filename){
-//    char* filename = "SINE8.WAV";
-   f_open(&f, filename, FA_READ);
-
-   f_read(&f, &header, sizeof(sWavHeader) ,&hs);
-
-   //list chunk check
-   if(header.Subchunk2ID != 0x61746164){ //check to make sure that it is data next
-       fres = f_lseek(&f, f_tell(&f) - 8); //go back to subchunk2id
-       f_read(&f, &list, sizeof(uint32_t), &hs);//read subchunk2id
-       while(list != 0x61746164){//while subchunk id not 'data'
-           f_read(&f, &list, 4, &hs); //read subchunk size
-           f_lseek(&f, f_tell(&f) + list); //skip to end of data
-           f_read(&f, &list, sizeof(uint32_t), &hs); //read new subchunk id
-       }
-       header.Subchunk2ID = list; //make subchunk 'data'
-       f_read(&f, &header.Subchunk2Size, sizeof(uint32_t), &hs); //'data' size
-   }
-
-   //check number of channels
-   channels = header.NumChannels;
-   fileLen = header.Subchunk2Size * 8 / header.BitsPerSample / header.SampleRate;
-
-   f_read(&f, &buffer, sizeof(buffer), &br);
-   wav_setup();
-
-//           f_close(&f);
-
-   return 0;
-}
-
-void wav_setup(){
-    //timer 6 enable
-    RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
-
-    TIM6->PSC = 1-1;
-    TIM6->ARR = (48000000/(header.SampleRate * channels)) -1;
-    //TIM6->DIER |= TIM_DIER_UDE;
-    TIM6->CR2 |= 0x20;
-    //TIM6->CR1 |= TIM_CR1_ARPE;
-    TIM6->CR1 |= TIM_CR1_CEN;
-
-    //setting up the DMA
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
-    DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    if(header.BitsPerSample == 8){
-        DMA1_Channel3-> CMAR = (uint32_t)buffer;
-        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR8R1);
-        DMA1_Channel3->CCR &= ~DMA_CCR_MSIZE |~DMA_CCR_PSIZE;
-        DMA1_Channel3->CNDTR = SAMPLES;
-    }
-    else{
-        DMA1_Channel3-> CMAR = (uint32_t)buffer16;
-        DMA1_Channel3-> CPAR = (uint32_t)&(DAC->DHR12L1);
-        DMA1_Channel3->CCR |= DMA_CCR_MSIZE_0 |DMA_CCR_PSIZE_0;
-        DMA1_Channel3->CNDTR = SAMPLES/2;
-    }
-    DMA1_Channel3->CCR |= DMA_CCR_DIR;
-    DMA1_Channel3->CCR |= DMA_CCR_MINC;
-    DMA1_Channel3->CCR |= DMA_CCR_CIRC;
-    DMA1_Channel3->CCR |= DMA_CCR_HTIE | DMA_CCR_TCIE;
-    DMA1_Channel3->CCR |= DMA_CCR_EN;
-    NVIC->ISER[0] = 1<<DMA1_Channel2_3_IRQn;
-
-    //Set up the DAC
-    RCC->APB1ENR |= RCC_APB1ENR_DACEN;
-    DAC->CR &= ~DAC_CR_EN1;
-    DAC->CR &= ~DAC_CR_TSEL1;
-    DAC->CR |= DAC_CR_DMAEN1;
-    DAC->CR |= DAC_CR_TEN1;
-    DAC->CR |= DAC_CR_EN1;
-}
-void DMA1_CH2_3_DMA2_CH1_2_IRQHandler(){
-    ////////////new//////
-    if(f_eof(f)){
-        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    }
-    ///////////////////
-    if(DMA1->ISR & DMA_ISR_HTIF3){
-        DMA1->IFCR |= DMA_IFCR_CHTIF3;
-        if(header.BitsPerSample == 8){
-            f_read(&f, &buffer, SAMPLES/2, &br);
-            currentPos += SAMPLES/2;
-//            if(br != SAMPLES/2){
-//                finish = 1;
-//            }
-        }
-        if(header.BitsPerSample == 16){
-            f_read(&f, &buffer16, SAMPLES/2, &br);
-            currentPos += SAMPLES/2;
-//            if(br != SAMPLES/2){
-//                finish = 1;
-//            }
-            for(int i = 0; i<SAMPLES/4; i++){
-                //buffer[i] ^= 0x80;
-                buffer16[i] += 0x8000;
-            }
-        }
-    }
-    if(DMA1->ISR & DMA_ISR_TCIF3){
-        DMA1->IFCR |= DMA_IFCR_CTCIF3;
-        if(header.BitsPerSample == 8){
-            f_read(&f, &buffer[SAMPLES/2], SAMPLES/2, &br2);
-            currentPos += SAMPLES/2;
-//            if(br != SAMPLES/2){
-//                        finish = 1;
-//                    }
-        }
-        if(header.BitsPerSample == 16){
-            f_read(&f, &buffer16[SAMPLES/4], SAMPLES/2, &br2);
-            currentPos += SAMPLES/2;
-//            if(br != SAMPLES/2){
-//                finish = 1;
-//            }
-            for(int i = SAMPLES/4; i<SAMPLES/2; i++){
-                //buffer[i] ^= 0x80;
-                buffer16[i] += 0x8000;
-            }
-        }currentPos += SAMPLES/2;
-    }
-    if(finish == 1){
-        DMA1_Channel3->CCR &= ~DMA_CCR_EN;
-    }
-    currentSec = currentPos * 8 / header.BitsPerSample / header.SampleRate;
-}
-
-#define ZIROFXNS
-#if defined(ZIROFXNS)
 int main() {
     init_usart5();
     enable_tty_interrupt();
@@ -901,9 +923,6 @@ int main() {
     quickLCDinit();
     UIInit();
     rendercursor();
-
-    int songprog = 0;
-    int songdur = 300;
 
     fres = f_mount(&FatFs, "", 1);
     fres = f_getcwd(str, 40);  /* Get current directory path */
@@ -930,4 +949,4 @@ int main() {
 
 
 }
-#endif
+
